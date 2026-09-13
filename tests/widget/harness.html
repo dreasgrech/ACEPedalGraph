@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PedalGraph widget tests</title>
+<style>
+  body { margin: 0; background: #222; color: #ddd; font: 12px monospace; }
+  /* stand-in for the game's HUD container */
+  .absolutecenter { position: relative; width: 1600px; height: 900px; overflow: hidden; }
+  #results { white-space: pre; }
+</style>
+<script>
+// ---- test doubles, installed before the widget module loads ------------------------
+
+// Manual animation-frame clock: tests call __clock.step(t) to run queued callbacks.
+window.__clock = {
+    queue: [], nextId: 1, cancelled: 0,
+    step(t) {
+        const run = this.queue; this.queue = [];
+        for (const [, cb] of run) cb(t);
+    }
+};
+window.requestAnimationFrame = (cb) => { const id = window.__clock.nextId++; window.__clock.queue.push([id, cb]); return id; };
+window.cancelAnimationFrame = (id) => { const n = window.__clock.queue.length; window.__clock.queue = window.__clock.queue.filter(q => q[0] !== id); if (window.__clock.queue.length !== n) window.__clock.cancelled++; };
+
+// In-memory localStorage so file:// origin quirks cannot affect the tests.
+const __store = {};
+Object.defineProperty(window, "localStorage", { value: {
+    getItem: (k) => (k in __store ? __store[k] : null),
+    setItem: (k, v) => { __store[k] = String(v); },
+    removeItem: (k) => { delete __store[k]; },
+    clear: () => { for (const k in __store) delete __store[k]; }
+}});
+
+// Fake car model, mutable by tests.
+window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percent: 0.25, clutch_percent: 0, handbrake_percent: 1 };
+window.PEDALGRAPH_SOURCE = "harness";
+
+// Capture console output so it can be asserted on and shown in the dump.
+window.__log = [];
+const __origLog = console.log.bind(console);
+console.log = (...a) => { window.__log.push(a.join(" ")); __origLog(...a); };
+</script>
+<script type="module" src="../../src/uiresources/js/pedalgraph.js"></script>
+</head>
+<body>
+<div class="absolutecenter" id="center"></div>
+<pre id="results"></pre>
+<div id="done" hidden></div>
+
+<script type="module">
+const results = [];
+function t(name, fn) {
+    try { fn(); results.push({ name, pass: true }); }
+    catch (e) { results.push({ name, pass: false, msg: String(e && e.message || e) }); }
+}
+function eq(a, b, what) { if (a !== b) throw new Error((what || "") + " expected " + JSON.stringify(b) + " got " + JSON.stringify(a)); }
+function ok(c, what) { if (!c) throw new Error(what || "assertion failed"); }
+function scaleOf(el) { const m = /scaleY\((-?[\d.]+)\)/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : 0; }
+function scaleIs(el, v, what) { near(scaleOf(el), v, 1e-6, what); }
+function near(a, b, eps, what) { if (Math.abs(a - b) > eps) throw new Error((what || "") + " expected ~" + b + " got " + a); }
+
+const N = 250, HZ = 50, SAMPLE_MS = 1000 / HZ;
+const clock = window.__clock;
+const center = document.getElementById("center");
+
+await customElements.whenDefined("ace-pedalgraph");
+
+t("element registered and logged", () => {
+    ok(customElements.get("ace-pedalgraph"), "not defined");
+    ok(window.__log.some(l => l.includes("[PedalGraph] script loaded, source=harness")), "no load log");
+});
+
+const w = document.createElement("ace-pedalgraph");
+center.appendChild(w);
+let tracks, bars, levels, vals;
+function grab() {
+    tracks = Array.from(w.querySelectorAll(".pg-track"));
+    bars = tracks.map(el => Array.from(el.querySelectorAll(".pg-bar")));
+    levels = Array.from(w.querySelectorAll(".pg-lvl > div"));
+    vals = Array.from(w.querySelectorAll(".pg-val"));
+}
+grab();
+
+t("builds 4 tracks x 2N bars, 4 levels, 4 readouts, one style tag", () => {
+    eq(tracks.length, 4, "tracks"); bars.forEach(b => eq(b.length, 2 * N, "bars"));
+    eq(levels.length, 4, "levels"); eq(vals.length, 4, "vals");
+    eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tags");
+    ok(clock.queue.length === 1, "one animation frame requested");
+});
+
+// trace order in the script: 0 clutch, 1 handbrake, 2 brake, 3 gas
+t("first frame samples nothing but renders live values and readouts", () => {
+    clock.step(1000);
+    eq(vals[3].textContent, "50%", "gas readout");
+    eq(vals[1].textContent, "100%", "handbrake readout");
+    scaleIs(levels[3], 0.5, "gas level");
+    eq(w.querySelector(".pg-nodata").textContent, "", "nodata cleared");
+});
+
+t("history commits at the fixed rate into slot head+1 in both halves", () => {
+    clock.step(1000 + SAMPLE_MS);          // exactly one sample period later
+    scaleIs(bars[3][1], 0.5, "slot 1");
+    scaleIs(bars[3][1 + N], 0.5, "slot 1+N");
+    scaleIs(bars[3][2], 0.5, "slot 2 is the incoming live bar");
+    scaleIs(bars[3][3], 0.0, "slot 3 untouched");
+});
+
+t("strip slides continuously between samples", () => {
+    const shiftAt = (frac) => -((1 + 1 + frac) / (2 * N)) * 100;   // head is 1 after one commit
+    clock.step(1000 + SAMPLE_MS + SAMPLE_MS / 2);
+    const m = /translateX\((-?[\d.]+)%\)/.exec(tracks[3].style.transform);
+    ok(m, "no translate"); near(parseFloat(m[1]), shiftAt(0.5), 0.001, "half-way shift");
+});
+
+t("catches up after a short hitch without dropping history", () => {
+    window.ModelCurrentCar.gas_percent = 0.8;
+    clock.step(1000 + SAMPLE_MS * 6);       // 6 periods since start => slots 1..6 committed
+    for (let i = 2; i <= 6; i++) scaleIs(bars[3][i], 0.8, "slot " + i);
+    scaleIs(bars[3][7], 0.8, "incoming slot 7 holds live value");
+    scaleIs(bars[3][8], 0.0, "slot 8 untouched");
+});
+
+t("a stall longer than the window resets the clock instead of replaying", () => {
+    window.ModelCurrentCar.gas_percent = 0.1;
+    clock.step(1000 + SAMPLE_MS * 6 + 20000);   // 20 s stall
+    scaleIs(bars[3][7], 0.1, "incoming slot got live value");
+    scaleIs(bars[3][8], 0.0, "no mass replay into slot 8");
+    clock.step(1000 + SAMPLE_MS * 6 + 20000 + SAMPLE_MS);
+    scaleIs(bars[3][7], 0.1, "slot 7 committed");
+    scaleIs(bars[3][8], 0.1, "slot 8 is the new incoming");
+});
+
+t("values are clamped to 0..1 and readouts only update on change", () => {
+    window.ModelCurrentCar.gas_percent = 1.7;
+    window.ModelCurrentCar.brake_percent = -0.4;
+    const t0 = 60000;
+    clock.step(t0);
+    scaleIs(levels[3], 1.0, "gas clamped high");
+    scaleIs(levels[2], 0.0, "brake clamped low");
+    eq(vals[3].textContent, "100%"); eq(vals[2].textContent, "0%");
+    const el = vals[3]; el.textContent = "sentinel";
+    clock.step(t0 + 1);
+    eq(el.textContent, "sentinel", "unchanged value must not rewrite the readout");
+});
+
+t("no focused car: nothing renders, no throw", () => {
+    const before = tracks[3].style.transform;
+    window.ModelCurrentCar.has_focused_car = false;
+    clock.step(70000); clock.step(70016);
+    eq(tracks[3].style.transform, before, "strip must not move");
+    window.ModelCurrentCar.has_focused_car = true;
+    window.ModelCurrentCar = null;
+    clock.step(70032);
+    window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.3, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0 };
+    clock.step(70048);
+    scaleIs(levels[3], 0.3, "recovers when the model is back");
+});
+
+t("hidden HUD skips drawing but keeps recording", () => {
+    document.body.classList.add("hide-hud");
+    const before = tracks[3].style.transform;
+    clock.step(80000);
+    clock.step(80000 + SAMPLE_MS * 3);
+    eq(tracks[3].style.transform, before, "no draw while hidden");
+    document.body.classList.remove("hide-hud");
+    clock.step(80000 + SAMPLE_MS * 3 + 1);
+    ok(tracks[3].style.transform !== before, "draws again when visible");
+});
+
+function mouse(type, x, y, target) {
+    (target || window).dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+}
+
+t("drag moves the widget, clamps to the container and saves a fractional position", () => {
+    w.style.left = "100px"; w.style.top = "100px"; w.style.bottom = "auto";
+    const r = w.getBoundingClientRect();
+    mouse("mousedown", r.left + 10, r.top + 10, w);
+    ok(w.classList.contains("dragging"));
+    mouse("mousemove", r.left + 210, r.top + 60);
+    eq(w.style.left, "300px", "left after drag"); eq(w.style.top, "150px", "top after drag");
+    mouse("mousemove", 99999, 99999);
+    const c = center.getBoundingClientRect();
+    eq(parseInt(w.style.left), Math.round(c.width - w.offsetWidth), "clamped right");
+    eq(parseInt(w.style.top), Math.round(c.height - w.offsetHeight), "clamped bottom");
+    mouse("mousemove", -99999, -99999);
+    eq(w.style.left, "0px"); eq(w.style.top, "0px");
+    mouse("mousemove", r.left + 410, r.top + 260);
+    mouse("mouseup", 0, 0);
+    ok(!w.classList.contains("dragging"));
+    const saved = JSON.parse(localStorage.getItem("acepedalgraph.pos"));
+    near(saved.fx, 500 / c.width, 0.001, "fx"); near(saved.fy, 350 / c.height, 0.001, "fy");
+});
+
+t("a new instance restores the saved fractional position", () => {
+    const w2 = document.createElement("ace-pedalgraph");
+    center.appendChild(w2);
+    eq(w2.style.left, "500px", "restored left"); eq(w2.style.top, "350px", "restored top");
+    eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tag still single");
+    w2.remove();
+});
+
+t("legacy pixel positions are ignored", () => {
+    localStorage.setItem("acepedalgraph.pos", JSON.stringify({ left: "5px", top: "5px" }));
+    const w3 = document.createElement("ace-pedalgraph");
+    center.appendChild(w3);
+    eq(w3.style.left, "", "no left applied"); w3.remove();
+    localStorage.clear();
+});
+
+t("disconnect cancels the frame loop and detaches listeners; reconnect does not rebuild", () => {
+    const barCount = w.querySelectorAll(".pg-bar").length;
+    const cancelledBefore = clock.cancelled;
+    w.remove();
+    eq(clock.cancelled, cancelledBefore + 1, "frame cancelled");
+    eq(clock.queue.length, 0, "queue empty");
+    const left = w.style.left;
+    mouse("mousedown", 0, 0, w); mouse("mousemove", 700, 700); mouse("mouseup", 0, 0);
+    eq(w.style.left, left, "listeners detached");
+    center.appendChild(w);
+    eq(w.querySelectorAll(".pg-bar").length, barCount, "not rebuilt");
+    eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tag single");
+    eq(clock.queue.length, 1, "loop restarted");
+});
+
+const passed = results.filter(r => r.pass).length;
+document.getElementById("results").textContent =
+    results.map(r => (r.pass ? "PASS " : "FAIL ") + r.name + (r.msg ? "  -- " + r.msg : "")).join("\n") +
+    "\nSUMMARY " + passed + "/" + results.length;
+document.getElementById("done").hidden = false;
+document.getElementById("done").textContent = "DONE";
+</script>
+</body>
+</html>

@@ -23,12 +23,17 @@ Entries are sorted by hash ascending; the game stops reading at the first entry
 whose hash is 0. The whole table is XOR'd with the 8-byte key 0x9F9721A97D1135C1.
 
 Usage:
-  python pack_kspkg.py <source_dir> <output.kspkg> [--encrypt]
+  python pack_kspkg.py <source_dir> <output.kspkg> [--encrypt] [--install] [--no-verify]
+
+  --encrypt    XOR the file blobs as well (official content does; mods need not)
+  --install    copy the result to %USERPROFILE%\\Saved Games\\ACE\\mods\\
+  --no-verify  skip re-reading the package to check every entry
 
 Every file below <source_dir> is stored with its path relative to <source_dir>,
 so <source_dir>/uiresources/hud.html becomes "uiresources\\hud.html" in the package.
 """
 import os
+import shutil
 import struct
 import sys
 
@@ -37,6 +42,7 @@ KEY_BYTES = KEY.to_bytes(8, "little")
 HEADER_SIZE = 0x100000
 TABLE_SIZE = 0x4000000
 ENTRY_SIZE = 0x100
+MAX_ENTRIES = TABLE_SIZE // ENTRY_SIZE
 PATH_FIELD = 0xE0
 BLOB_ALIGN = 0x100000
 FLAG_DIR = 0x1
@@ -44,6 +50,10 @@ FLAG_XOR = 0x100
 FNV_PRIME = 0x100000001B3
 FNV_OFFSET = 0xCBF29CE484222325
 MASK64 = 0xFFFFFFFFFFFFFFFF
+
+# files that must never end up in a package
+IGNORED_NAMES = {".gitkeep", ".gitignore", "desktop.ini", "thumbs.db", ".ds_store"}
+IGNORED_SUFFIXES = (".pyc", ".swp", ".tmp", "~")
 
 
 def fnv1a64(data: bytes) -> int:
@@ -53,14 +63,17 @@ def fnv1a64(data: bytes) -> int:
     return h
 
 
+def normalize(path: str) -> str:
+    return path.replace("/", "\\").lower()
+
+
 def path_hash(path: str) -> int:
-    return fnv1a64(path.lower().replace("/", "\\").encode("utf-16-le"))
+    return fnv1a64(normalize(path).encode("utf-16-le"))
 
 
 def xor_buffer(buf: bytearray) -> None:
     n = len(buf)
     full = n - (n % 8)
-    # fast path: view as 64-bit words
     words = memoryview(buf)[:full].cast("Q")
     for i in range(len(words)):
         words[i] ^= KEY
@@ -72,35 +85,42 @@ def collect(source_dir: str):
     files = []
     dirs = set()
     for root, dirnames, filenames in os.walk(source_dir):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d != "__pycache__"]
         rel_root = os.path.relpath(root, source_dir)
         if rel_root != ".":
-            dirs.add(rel_root.replace("/", "\\").lower())
+            dirs.add(normalize(rel_root))
         for name in filenames:
+            lname = name.lower()
+            if lname in IGNORED_NAMES or lname.endswith(IGNORED_SUFFIXES):
+                print(f"  (skipping {os.path.join(rel_root, name)})")
+                continue
             full = os.path.join(root, name)
-            rel = os.path.relpath(full, source_dir).replace("/", "\\").lower()
-            files.append((rel, full))
+            files.append((normalize(os.path.relpath(full, source_dir)), full))
     return sorted(files), sorted(dirs)
 
 
 def make_entry(path: str, flags: int, size: int, offset: int) -> bytes:
-    raw = path.encode("ascii")
+    try:
+        raw = path.encode("ascii")
+    except UnicodeEncodeError:
+        raise SystemExit(f"non-ASCII characters in path are not supported: {path!r}")
     if len(raw) >= PATH_FIELD:
-        raise ValueError(f"path too long for table entry: {path}")
+        raise SystemExit(f"path too long for table entry ({len(raw)} >= {PATH_FIELD}): {path}")
     return (raw.ljust(PATH_FIELD, b"\0")
             + struct.pack("<ihh", 0, flags, len(raw))
             + struct.pack("<Q", path_hash(path))
             + struct.pack("<qq", size, offset))
 
 
-def pack(source_dir: str, out_path: str, encrypt: bool = False) -> None:
+def pack(source_dir: str, out_path: str, encrypt: bool = False) -> list:
     files, dirs = collect(source_dir)
     if not files:
         raise SystemExit(f"no files found under {source_dir}")
 
-    entries = []
-    for d in dirs:
-        entries.append((path_hash(d), make_entry(d, FLAG_DIR, 0, 0)))
+    entries = [(path_hash(d), make_entry(d, FLAG_DIR, 0, 0)) for d in dirs]
+    written = []   # (rel, full, offset, size, flags) for verification
 
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "wb") as out:
         out.write(b"\0" * HEADER_SIZE)
         offset = HEADER_SIZE
@@ -113,29 +133,84 @@ def pack(source_dir: str, out_path: str, encrypt: bool = False) -> None:
                 flags |= FLAG_XOR
             out.write(data)
             entries.append((path_hash(rel), make_entry(rel, flags, len(data), offset)))
+            written.append((rel, full, offset, len(data), flags))
             print(f"  {rel}  ({len(data)} bytes @ 0x{offset:X})")
             offset += len(data)
 
         pad = (-offset) % BLOB_ALIGN
         out.write(b"\0" * pad)
 
+        if len(entries) >= MAX_ENTRIES:
+            raise SystemExit(f"too many entries for the file table ({len(entries)} >= {MAX_ENTRIES})")
         entries.sort(key=lambda e: e[0])
-        if len(entries) >= TABLE_SIZE // ENTRY_SIZE:
-            raise SystemExit("too many entries for the file table")
         hashes = [h for h, _ in entries]
         if len(set(hashes)) != len(hashes):
             raise SystemExit("hash collision between entries")
 
-        table = bytearray(TABLE_SIZE)
-        pos = 0
-        for _, ent in entries:
-            table[pos:pos + ENTRY_SIZE] = ent
-            pos += ENTRY_SIZE
-        xor_buffer(table)
-        out.write(table)
+        # Only the used prefix of the table needs real XOR work; the zero-padded
+        # remainder XORs to the repeated key, which we can emit directly.
+        used = bytearray().join(ent for _, ent in entries)
+        xor_buffer(used)
+        out.write(used)
+        remaining = TABLE_SIZE - len(used)
+        out.write(KEY_BYTES * (remaining // 8))
 
-    total = HEADER_SIZE + (offset - HEADER_SIZE) + pad + TABLE_SIZE
+    total = offset + pad + TABLE_SIZE
     print(f"wrote {out_path}: {len(files)} files, {len(dirs)} dirs, {total} bytes")
+    return written
+
+
+def verify(out_path: str, written: list) -> None:
+    """Re-read the package the way the game would and compare against the sources."""
+    with open(out_path, "rb") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        if size % BLOB_ALIGN != 0:
+            raise SystemExit(f"verify: package size {size} is not 1 MB aligned")
+        f.seek(size - TABLE_SIZE)
+        table = bytearray(f.read(TABLE_SIZE))
+        xor_buffer(table)
+
+        entries = {}
+        prev = -1
+        for i in range(MAX_ENTRIES):
+            e = table[i * ENTRY_SIZE:(i + 1) * ENTRY_SIZE]
+            h = struct.unpack_from("<Q", e, 0xE8)[0]
+            if h == 0:
+                break
+            if h <= prev:
+                raise SystemExit("verify: table is not strictly sorted by hash")
+            prev = h
+            plen = struct.unpack_from("<h", e, 0xE6)[0]
+            path = bytes(e[:plen]).decode("ascii")
+            if path_hash(path) != h:
+                raise SystemExit(f"verify: hash mismatch for {path}")
+            flags, = struct.unpack_from("<H", e, 0xE4)
+            fsize, foff = struct.unpack_from("<qq", e, 0xF0)
+            entries[path] = (flags, fsize, foff)
+
+        for rel, full, offset, fsize, flags in written:
+            if rel not in entries:
+                raise SystemExit(f"verify: {rel} missing from table")
+            tflags, tsize, toff = entries[rel]
+            if (tflags, tsize, toff) != (flags, fsize, offset):
+                raise SystemExit(f"verify: table entry mismatch for {rel}")
+            f.seek(toff)
+            data = bytearray(f.read(tsize))
+            if tflags & FLAG_XOR:
+                xor_buffer(data)
+            with open(full, "rb") as src:
+                if bytes(data) != src.read():
+                    raise SystemExit(f"verify: blob content mismatch for {rel}")
+    print(f"verified {len(written)} files, {len(entries)} table entries OK")
+
+
+def install(out_path: str) -> None:
+    mods = os.path.join(os.path.expanduser("~"), "Saved Games", "ACE", "mods")
+    os.makedirs(mods, exist_ok=True)
+    dest = os.path.join(mods, os.path.basename(out_path))
+    shutil.copyfile(out_path, dest)
+    print(f"installed {dest}")
 
 
 def selftest() -> None:
@@ -147,8 +222,14 @@ def selftest() -> None:
 
 if __name__ == "__main__":
     selftest()
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if len(args) != 2:
+    unknown = flags - {"--encrypt", "--install", "--no-verify"}
+    if len(args) != 2 or unknown:
         print(__doc__)
         sys.exit(1)
-    pack(args[0], args[1], encrypt="--encrypt" in sys.argv)
+    written = pack(args[0], args[1], encrypt="--encrypt" in flags)
+    if "--no-verify" not in flags:
+        verify(args[1], written)
+    if "--install" in flags:
+        install(args[1])
