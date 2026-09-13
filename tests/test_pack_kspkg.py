@@ -224,6 +224,7 @@ class RepoBuildTests(unittest.TestCase):
             files = {e["path"] for e in entries if not e["flags"] & pk.FLAG_DIR}
             self.assertIn("uiresources\\hud.html", files)
             self.assertIn("uiresources\\js\\pedalgraph.js", files)
+            self.assertIn("uiresources\\css\\pedalgraph.css", files)
             # Observed 2026-09-13: the game only applies the UI override when the
             # package also carries a copy of an existing file under content\.
             self.assertTrue(any(p.startswith("content\\cars\\") and p.endswith("\\displays\\display.html")

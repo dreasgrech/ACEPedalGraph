@@ -4,3 +4,7 @@ dist/*.kspkg
 # python
 __pycache__/
 *.pyc
+
+# editor swap / temp files (the packer skips them too)
+*.swp
+*~

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>PedalGraph preview</title>
+<!--
+  Out-of-game preview. Loads the real stylesheet and script from src/ with a fake
+  ModelCurrentCar you drive from the keyboard, inside a 16:9 stand-in for the
+  game's HUD container. Open this file directly in Edge or Chrome:
+
+      dev/preview.html
+
+  What it cannot show: Cohtml quirks (this is Chromium), the stock HUD around the
+  widget, and the game's font (a system font stands in for --font-family-main).
+-->
+<link rel="stylesheet" type="text/css" href="../src/uiresources/css/pedalgraph.css">
+<style>
+    :root { --font-family-main: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; }
+    html, body { margin: 0; height: 100%; background: #101214; color: #ddd; font-family: var(--font-family-main); }
+    body { display: flex; flex-direction: column; }
+
+    /* 16:9 stage that fits the window, like the game's .absolutecenter at 2560x1440 */
+    #stage-wrap { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+    .absolutecenter { position: relative; aspect-ratio: 16 / 9; height: 100%; max-width: 100%; margin: auto;
+                      background: radial-gradient(ellipse at 50% 60%, #3a4046 0%, #1b1e22 70%); overflow: hidden;
+                      box-shadow: 0 0 0 1px #333; }
+    .absolutecenter .track { position: absolute; left: 0; right: 0; bottom: 0; height: 45%;
+                             background: linear-gradient(#4a4d50, #2c2e31); }
+    .absolutecenter .track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 0.5%;
+                                     background: repeating-linear-gradient(#ddd 0 8%, transparent 8% 20%); transform: translateX(-50%); }
+
+    #panel { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; align-items: center;
+             padding: 0.5rem 1rem; background: #181b1e; border-top: 1px solid #333; font-size: 0.8rem; }
+    #panel .key { display: inline-block; min-width: 1.4em; padding: 0 0.3em; border: 1px solid #666; border-radius: 3px;
+                  text-align: center; background: #222; font-weight: 700; }
+    #panel .key.down { background: #44ea78; color: #000; border-color: #44ea78; }
+    #panel button { background: #2a2e33; color: #ddd; border: 1px solid #555; border-radius: 3px; padding: 0.2rem 0.6rem; cursor: pointer; }
+    #panel button.on { background: #3aa6ff; color: #000; border-color: #3aa6ff; }
+    #panel .dim { opacity: 0.6; }
+</style>
+</head>
+<body class="hud">
+<div id="stage-wrap">
+    <div class="absolutecenter" id="stage">
+        <div class="track"></div>
+        <div id="pedalgraph"></div>
+    </div>
+</div>
+<div id="panel">
+    <span>PedalGraph <b id="version">?</b> preview</span>
+    <span><span class="key" data-key="w">W</span> throttle <span class="key" data-key="s">S</span> brake
+          <span class="key" data-key="a">A</span> clutch <span class="key" data-key=" ">Space</span> handbrake</span>
+    <button id="btn-demo" class="on">auto demo</button>
+    <button id="btn-hide">hide HUD</button>
+    <button id="btn-focus" class="on">focused car</button>
+    <button id="btn-reset">reset position</button>
+    <span class="dim">fps <b id="fps">0</b></span>
+    <span class="dim">drag the widget to move it; position persists like in game</span>
+</div>
+
+<script>
+/** Fake game side: a ModelCurrentCar the widget can read, driven by keys or a demo. */
+window.PEDALGRAPH_SOURCE = "preview";
+window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0 };
+
+const Preview = (function () {
+
+    /** Pedal travel per second when a key is held / released (1 = full travel). */
+    const RISE_PER_S = 3.0;
+    const FALL_PER_S = 5.0;
+    const HANDBRAKE_RISE_PER_S = 8.0;
+    const FPS_WINDOW_MS = 500;
+
+    const KEY_TO_FIELD = { w: "gas_percent", s: "brake_percent", a: "clutch_percent", " ": "handbrake_percent" };
+
+    const state = {
+        held: {},
+        demo: true,
+        lastNow: 0,
+        frames: 0,
+        fpsAt: 0
+    };
+
+    const q = function (selector) { return document.querySelector(selector); };
+
+    const towards = function (current, target, ratePerS, dt) {
+        if (current < target) { return Math.min(target, current + ratePerS * dt); }
+
+        return Math.max(target, current - ratePerS * dt);
+    };
+
+    /** Scripted laps: throttle and brake trade off, clutch blips on shifts, occasional handbrake. */
+    const demoTargets = function (t) {
+        const phase = (t / 1000) % 12;
+        const braking = phase > 8.5 && phase < 10.5;
+        const shifting = (phase % 2) < 0.15;
+        const shiftBlip = Math.sin(phase * 3.1) * 0.15;
+
+        return {
+            gas_percent: braking ? 0 : clamp01(0.6 + shiftBlip + 0.4 * Math.sin(phase * 0.9)),
+            brake_percent: braking ? clamp01(0.9 - (phase - 8.5) * 0.3) : 0,
+            clutch_percent: shifting ? 1 : 0,
+            handbrake_percent: phase > 11.2 ? 1 : 0
+        };
+    };
+
+    const clamp01 = function (x) { return Math.max(0, Math.min(1, x)); };
+
+    const step = function (now) {
+        const car = window.ModelCurrentCar;
+        const dt = state.lastNow ? Math.min(0.1, (now - state.lastNow) / 1000) : 0;
+        const targets = state.demo ? demoTargets(now) : {
+            gas_percent: state.held.w ? 1 : 0,
+            brake_percent: state.held.s ? 1 : 0,
+            clutch_percent: state.held.a ? 1 : 0,
+            handbrake_percent: state.held[" "] ? 1 : 0
+        };
+
+        state.lastNow = now;
+
+        if (car) {
+            Object.keys(targets).forEach(function (field) {
+                const rate = field === "handbrake_percent" ? HANDBRAKE_RISE_PER_S : (targets[field] > car[field] ? RISE_PER_S : FALL_PER_S);
+
+                car[field] = towards(car[field], targets[field], rate, dt);
+            });
+        }
+
+        state.frames += 1;
+
+        if (now - state.fpsAt > FPS_WINDOW_MS) {
+            q("#fps").textContent = Math.round(state.frames * 1000 / (now - state.fpsAt));
+            state.frames = 0;
+            state.fpsAt = now;
+        }
+
+        requestAnimationFrame(step);
+    };
+
+    const setKey = function (key, down) {
+        const k = key.toLowerCase();
+
+        if (!(k in KEY_TO_FIELD)) { return; }
+
+        state.held[k] = down;
+
+        const cap = document.querySelector(".key[data-key=\"" + k + "\"]");
+
+        if (cap) { cap.classList.toggle("down", down); }
+
+        if (down && state.demo) { setDemo(false); }
+    };
+
+    const setDemo = function (on) {
+        state.demo = on;
+        q("#btn-demo").classList.toggle("on", on);
+    };
+
+    const wire = function () {
+        q("#version").textContent = PedalGraph.VERSION;
+
+        window.addEventListener("keydown", function (e) { setKey(e.key, true); if (e.key === " ") { e.preventDefault(); } });
+        window.addEventListener("keyup", function (e) { setKey(e.key, false); });
+
+        q("#btn-demo").addEventListener("click", function () { setDemo(!state.demo); });
+
+        q("#btn-hide").addEventListener("click", function () {
+            const hidden = document.body.classList.toggle(PedalGraph.HUD_HIDDEN_CLASS);
+
+            q("#btn-hide").classList.toggle("on", hidden);
+        });
+
+        q("#btn-focus").addEventListener("click", function () {
+            const car = window.ModelCurrentCar;
+
+            car.has_focused_car = !car.has_focused_car;
+            q("#btn-focus").classList.toggle("on", car.has_focused_car);
+        });
+
+        q("#btn-reset").addEventListener("click", function () {
+            try { localStorage.removeItem(PedalGraph.STORAGE_KEY); } catch (ignore) { /* nothing stored */ }
+
+            location.reload();
+        });
+
+        requestAnimationFrame(step);
+    };
+
+    return { wire: wire, state: state };
+}());
+</script>
+<script defer src="../src/uiresources/js/pedalgraph.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () { Preview.wire(); });
+</script>
+</body>
+</html>

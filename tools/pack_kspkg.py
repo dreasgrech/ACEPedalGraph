@@ -220,8 +220,18 @@ def selftest() -> None:
     assert got == expect, f"hash self-test failed: {got:#x} != {expect:#x}"
 
 
+def read_version() -> str:
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VERSION")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return "unknown"
+
+
 if __name__ == "__main__":
     selftest()
+    print(f"PedalGraph version {read_version()}")
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     unknown = flags - {"--encrypt", "--install", "--no-verify"}

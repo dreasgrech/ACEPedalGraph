@@ -55,6 +55,9 @@ def main(argv):
     loaded = [l for l in pg if "script loaded" in l]
     sampling = [l for l in pg if "sampling ok" in l]
     src = re.search(r"source=(\w+)", loaded[0]).group(1) if loaded else None
+    ver = re.search(r"version=([\w.\-]+)", loaded[0]) if loaded else None
+    if loaded:
+        print(f"mod version: {ver.group(1) if ver else 'pre-0.2.0 (no version in log)'}")
 
     if hud_loads == 0:
         print("RESULT: HUD never loaded in this session (join a session first)")

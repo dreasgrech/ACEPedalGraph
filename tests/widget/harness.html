@@ -45,6 +45,7 @@ window.__log = [];
 const __origLog = console.log.bind(console);
 console.log = function () { const a = Array.prototype.slice.call(arguments); window.__log.push(a.join(" ")); __origLog.apply(null, a); };
 </script>
+<link rel="stylesheet" type="text/css" href="../../src/uiresources/css/pedalgraph.css">
 <!-- same kind of script tag as hud.html: classic, so `PedalGraph` is a page-wide binding -->
 <script src="../../src/uiresources/js/pedalgraph.js"></script>
 </head>
@@ -73,8 +74,9 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     t("module present, constants as expected, load logged", function () {
         eq(typeof PedalGraph, "object", "PedalGraph module");
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
-        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, source=harness") >= 0; }), "no load log");
-        eq(document.getElementById("pedalgraph"), null, "harness must not carry the auto-boot root");
+        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness") >= 0; }), "no load log");
+        eq(document.getElementById(PedalGraph.ROOT_ID), null, "harness must not carry the auto-boot root");
+        eq(typeof PedalGraph.VERSION, "string", "version exported");
     });
 
     const root = document.createElement("div");
@@ -92,7 +94,7 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     t("attach builds 4 tracks x 2N bars, 4 levels, 4 readouts, one style tag, root class", function () {
         eq(tracks.length, 4, "tracks"); bars.forEach(function (b) { eq(b.length, 2 * N, "bars"); });
         eq(levels.length, 4, "levels"); eq(vals.length, 4, "vals");
-        eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tags");
+        eq(getComputedStyle(root).position, "absolute", "stylesheet applied");
         ok(root.classList.contains("ace-pedalgraph"), "root class");
         eq(clock.queue.length, 1, "one animation frame requested");
         eq(state.root, root, "state carries the root");
@@ -213,7 +215,6 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         center.appendChild(root2);
         const state2 = PedalGraph.attach(root2);
         eq(root2.style.left, "500px", "restored left"); eq(root2.style.top, "350px", "restored top");
-        eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tag still single");
         PedalGraph.detach(state2); root2.remove();
     });
 
@@ -240,7 +241,6 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         ok(!root.classList.contains("dragging"), "not dragging");
         state = PedalGraph.attach(root);
         eq(root.querySelectorAll(".pg-bar").length, barCount, "markup reused, not rebuilt");
-        eq(document.querySelectorAll("#pedalgraph-style").length, 1, "style tag single");
         eq(clock.queue.length, 1, "loop restarted");
         PedalGraph.detach(state);
     });

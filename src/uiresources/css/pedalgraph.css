@@ -1,0 +1,166 @@
+/*
+ * PedalGraph -- widget stylesheet.
+ *
+ * Loaded by hud.html after the stock ui.css / uicomponents.css, so the font
+ * variable below is the game's. Trace colours live here, keyed by the
+ * data-trace index the script puts on each strip and legend item (see TRACES
+ * in pedalgraph.js: 0 clutch, 1 handbrake, 2 brake, 3 throttle).
+ *
+ * Cohtml notes: no var() fallbacks (unsupported), and nothing here may change
+ * per frame except transforms -- the script only ever writes transform values.
+ */
+
+.ace-pedalgraph {
+    position: absolute;
+    left: 2rem;
+    bottom: 12rem;
+    width: 22rem;
+    display: block;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 0.25rem;
+    padding: 0.35rem 0.5rem 0.4rem 0.5rem;
+    color: #fff;
+    font-family: var(--font-family-main);
+    cursor: pointer;
+}
+
+.ace-pedalgraph.dragging {
+    border-color: #bd0000;
+}
+
+body.hide-hud .ace-pedalgraph {
+    visibility: hidden;
+}
+
+/* ---- header: legend and status ---------------------------------------------- */
+
+.ace-pedalgraph .pg-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.2rem;
+}
+
+.ace-pedalgraph .pg-legend {
+    display: flex;
+    flex-direction: row;
+}
+
+.ace-pedalgraph .pg-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-left: 0.6rem;
+}
+
+.ace-pedalgraph .pg-item:first-child {
+    margin-left: 0;
+}
+
+.ace-pedalgraph .pg-swatch {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 0.1rem;
+    margin-right: 0.25rem;
+}
+
+.ace-pedalgraph .pg-val {
+    min-width: 2.2rem;
+    text-align: right;
+}
+
+.ace-pedalgraph .pg-nodata {
+    font-size: 0.65rem;
+    opacity: 0.6;
+}
+
+/* ---- plot: scrolling strips ----------------------------------------------------- */
+
+.ace-pedalgraph .pg-plot {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    height: 6rem;
+}
+
+.ace-pedalgraph .pg-graph {
+    position: relative;
+    overflow: hidden;
+    flex: 1 1 auto;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.ace-pedalgraph .pg-grid {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.10);
+}
+
+.ace-pedalgraph .pg-track {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 200%;
+}
+
+.ace-pedalgraph .pg-bar {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    transform-origin: 50% 100%;
+    transform: scaleY(0);
+    opacity: 0.75;
+}
+
+/* ---- level bars: current value per trace --------------------------------------- */
+
+.ace-pedalgraph .pg-bars {
+    display: flex;
+    flex-direction: row;
+    margin-left: 0.4rem;
+    height: 100%;
+}
+
+.ace-pedalgraph .pg-lvl {
+    position: relative;
+    width: 0.45rem;
+    margin-left: 0.2rem;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.ace-pedalgraph .pg-lvl > div {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    transform-origin: 50% 100%;
+    transform: scaleY(0);
+}
+
+/* ---- trace colours ---------------------------------------------------------------- */
+
+.ace-pedalgraph [data-trace="0"] .pg-bar,
+.ace-pedalgraph [data-trace="0"] .pg-swatch,
+.ace-pedalgraph [data-trace="0"] .pg-fill { background: #3aa6ff; }   /* clutch */
+
+.ace-pedalgraph [data-trace="1"] .pg-bar,
+.ace-pedalgraph [data-trace="1"] .pg-swatch,
+.ace-pedalgraph [data-trace="1"] .pg-fill { background: #ffb020; }   /* handbrake */
+
+.ace-pedalgraph [data-trace="2"] .pg-bar,
+.ace-pedalgraph [data-trace="2"] .pg-swatch,
+.ace-pedalgraph [data-trace="2"] .pg-fill { background: #ff1418; }   /* brake */
+
+.ace-pedalgraph [data-trace="3"] .pg-bar,
+.ace-pedalgraph [data-trace="3"] .pg-swatch,
+.ace-pedalgraph [data-trace="3"] .pg-fill { background: #44ea78; }   /* throttle */

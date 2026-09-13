@@ -1,19 +1,25 @@
 # ACE PedalGraph
 
 HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle,
-brake, clutch and handbrake input. Working as of 2026-09-13 on game version
-0.9.1+release.6.
+brake, clutch and handbrake input. Version 0.2.0, working as of 2026-09-13 on
+game version 0.9.1+release.6.
 
 ## Layout
 
 - `src/uiresources/hud.html` - copy of the stock HUD page with one extra
-  deferred `<script>` tag, a source tag, and one `<div id="pedalgraph">`.
+  deferred `<script>` tag, one `<link>` for the widget stylesheet, a source
+  tag, and one `<div id="pedalgraph">`.
 - `src/uiresources/js/pedalgraph.js` - the widget, an IIFE module
   (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
   Draggable, remembers its position (as a fraction of the screen) in
-  `localStorage`, hides with the HUD.
+  `localStorage`, hides with the HUD. Writes no colours or sizes, only
+  transforms; every class name, timing and precision is a named constant.
+- `src/uiresources/css/pedalgraph.css` - all styling, including the trace
+  colours keyed by `data-trace` index.
+- `VERSION` - the mod version, single source of truth (see Versioning).
+- `dev/preview.html` - runs the widget outside the game (see below).
 - `src/content/cars/ks_toyota_supra_mkiv/displays/display.html` - copy of a
   stock car display with one logging line. It does NOT take effect in game;
   it is there because the package is only applied when it contains an
@@ -34,6 +40,36 @@ python tools/pack_kspkg.py src dist/pedalgraph.kspkg --install
 
 `--install` copies the package to `%USERPROFILE%\Saved Games\ACE\mods\`.
 Delete it from there to restore the stock HUD.
+
+## Preview outside the game
+
+Open `dev/preview.html` in Edge or Chrome (double-click, no server needed). It
+loads the real `pedalgraph.css` and `pedalgraph.js` from `src/` inside a 16:9
+stand-in for the game's HUD container and feeds them a fake `ModelCurrentCar`:
+
+- `W` throttle, `S` brake, `A` clutch, `Space` handbrake (with pedal travel
+  smoothing), or leave **auto demo** on for a scripted lap
+- **hide HUD** toggles `body.hide-hud` like the game's HUD toggle
+- **focused car** toggles `has_focused_car` (spectator/no-car case)
+- **reset position** clears the stored position; dragging persists like in game
+- the fps counter shows the browser's frame rate
+
+What it cannot show: Cohtml-specific behaviour (this is Chromium), the stock
+HUD around the widget, and the game's font. Anything touching per-frame
+rendering still needs one in-game run, checked with `tools/check_ingame_log.py`.
+
+## Versioning
+
+`VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
+it in `const VERSION`, logs it in its first line (`script loaded,
+version=0.2.0, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
+fails if the two disagree or if this README stops mentioning the current
+version, so bumping means: edit `VERSION`, edit the constant, mention it here,
+rebuild. `tools/check_ingame_log.py` prints the version the game actually ran.
+
+History: 0.1.0 proof of concept (custom element, module script);
+0.2.0 IIFE module in project style, external stylesheet, named constants,
+version stamp, preview page, test suite.
 
 ## Code style (JavaScript)
 
@@ -66,8 +102,11 @@ python -m unittest discover -s tests -v
   `C:\AssettoEvoSDKDocumentation` with our rules.
 - `tests/test_sources.py` - static rules on the shipped files: hud.html keeps
   the stock structure and load order; the widget has no per-frame geometry
-  (SVG/canvas), no `var(--x, fallback)`, balanced brackets, consistent
-  constants, lifecycle cleanup.
+  (SVG/canvas), no CSS in the script, no `var(--x, fallback)`, no magic
+  numbers in the hot path, balanced brackets, consistent constants, lifecycle
+  cleanup; every class name the script uses is styled and every trace has a
+  colour; the version agrees across `VERSION`, the script and this README;
+  the preview page loads the real sources; and the JavaScript style rules.
 - `tests/test_widget_browser.py` - runs `tests/widget/harness.html` in a
   headless Edge or Chrome with a fake animation clock, fake `localStorage`
   and fake `ModelCurrentCar`: build, first frame, fixed-rate commits,

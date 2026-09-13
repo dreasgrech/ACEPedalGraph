@@ -4,7 +4,8 @@
  * A scrolling time graph of throttle, brake, clutch and handbrake input, added to
  * the stock HUD page (hud.html) by a mod package. It knows nothing of the stock
  * ks-* component framework; it only reads the global model object the game
- * refreshes every frame and draws into one plain <div>.
+ * refreshes every frame and draws into one plain <div>. Styling lives in
+ * css/pedalgraph.css; this file writes no colours or sizes, only transforms.
  *
  * Data source: `window.ModelCurrentCar` (UICurrentCarState, mirrored into the
  * Gameface UI by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
@@ -19,7 +20,7 @@
  * This version only ever changes CSS transforms on a fixed set of elements, the
  * same technique the stock HUD uses for its gauges. No geometry is rebuilt.
  *
- * Each trace is a strip of 2*N thin bars (two identical halves). A committed
+ * Each trace is a strip of two identical halves of N thin bars. A committed
  * sample writes one bar in each half and the strip slides left by one bar, so
  * the newest sample is always at the right edge and the wrap-around is
  * invisible. Samples are committed at a fixed SAMPLE_HZ, but every rendered frame
@@ -32,61 +33,86 @@
  * `PedalGraph.detach(state)` stops it and releases its listeners. The boot block
  * at the bottom attaches to `#pedalgraph` when hud.html has one.
  */
-console.log("[PedalGraph] script loaded, source=" + (window.PEDALGRAPH_SOURCE || "unknown") + ", url=" + location.href);
-
 const PedalGraph = (function () {
+
+    /** Mod version -- keep in step with the VERSION file at the repo root. */
+    const VERSION = "0.2.0";
+
+    /** Prefix of every log line; the game log and the tests grep for it. */
+    const LOG_PREFIX = "[PedalGraph]";
 
     /** History resolution, independent of frame rate. */
     const SAMPLE_HZ = 50;
     /** Visible history in seconds. */
     const WINDOW_S = 5;
-    /** Bars per trace (250). */
+    /** Bars per half strip: one per sample in the window (250). */
     const N = SAMPLE_HZ * WINDOW_S;
+    /** Bars per strip: two identical halves so the wrap-around is invisible. */
+    const STRIP_BARS = 2 * N;
+    /** Width of the strip relative to the visible graph. */
+    const STRIP_WIDTH_PCT = 200;
+    /** Bars are widened a hair so rounding cannot open seams between them. */
+    const BAR_OVERLAP_PCT = 0.02;
     const SAMPLE_MS = 1000 / SAMPLE_HZ;
     const WINDOW_MS = WINDOW_S * 1000;
     const LOG_EVERY_MS = 60000;
-    const STORAGE_KEY = "acepedalgraph.pos";
-    const STYLE_ID = "pedalgraph-style";
-    const ROOT_CLASS = "ace-pedalgraph";
+    /** Decimals kept when writing transforms; more only churns strings. */
+    const SCALE_DECIMALS = 3;
+    const SHIFT_DECIMALS = 4;
+    const LAYOUT_DECIMALS = 4;
+    const LOG_DECIMALS = 2;
+    /** Horizontal reference lines, as percent of the graph height from the top. */
+    const GRID_LINES_PCT = [25, 50, 75];
 
-    /** Draw order: later traces paint over earlier ones. */
+    const STORAGE_KEY = "acepedalgraph.pos";
+    /** Element id hud.html gives the widget's root; the boot block attaches to it. */
+    const ROOT_ID = "pedalgraph";
+    /** The stock HUD toggles this class on <body> when the HUD is hidden. */
+    const HUD_HIDDEN_CLASS = "hide-hud";
+
+    /** Class names shared with css/pedalgraph.css. */
+    const CLASS = {
+        root: "ace-pedalgraph",
+        dragging: "dragging",
+        header: "pg-header",
+        legend: "pg-legend",
+        item: "pg-item",
+        swatch: "pg-swatch",
+        value: "pg-val",
+        noData: "pg-nodata",
+        plot: "pg-plot",
+        graph: "pg-graph",
+        grid: "pg-grid",
+        track: "pg-track",
+        bar: "pg-bar",
+        levels: "pg-bars",
+        level: "pg-lvl",
+        fill: "pg-fill"
+    };
+
+    /** Attribute that keys a strip, swatch or level fill to its trace colour in the CSS. */
+    const TRACE_ATTR = "data-trace";
+
+    const NO_DATA_TEXT = "waiting for car data";
+
+    /**
+     * The traces, in draw order (later ones paint over earlier ones). `key` is the
+     * ModelCurrentCar field; the index doubles as the CSS colour key.
+     */
     const TRACES = [
-        { key: "clutch_percent", label: "CLU", color: "#3aa6ff" },
-        { key: "handbrake_percent", label: "HBK", color: "#ffb020" },
-        { key: "brake_percent", label: "BRK", color: "#ff1418" },
-        { key: "gas_percent", label: "THR", color: "#44ea78" }
+        { key: "clutch_percent", label: "CLU" },
+        { key: "handbrake_percent", label: "HBK" },
+        { key: "brake_percent", label: "BRK" },
+        { key: "gas_percent", label: "THR" }
     ];
 
-    /** Index into TRACES, for the log line. */
+    /** Indices into TRACES, for the log line. */
     const CLUTCH = 0;
     const HANDBRAKE = 1;
     const BRAKE = 2;
     const GAS = 3;
 
-    const CSS = [
-        "." + ROOT_CLASS + " {",
-        "  position: absolute; left: 2rem; bottom: 12rem; width: 22rem; display: block;",
-        "  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 0.25rem;",
-        "  padding: 0.35rem 0.5rem 0.4rem 0.5rem; color: #fff; cursor: pointer;",
-        "}",
-        "." + ROOT_CLASS + ".dragging { border-color: #bd0000; }",
-        "body.hide-hud ." + ROOT_CLASS + " { visibility: hidden; }",
-        "." + ROOT_CLASS + " .pg-header { display: flex; flex-direction: row; justify-content: space-between; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.2rem; }",
-        "." + ROOT_CLASS + " .pg-legend { display: flex; flex-direction: row; }",
-        "." + ROOT_CLASS + " .pg-item { display: flex; flex-direction: row; align-items: center; margin-left: 0.6rem; }",
-        "." + ROOT_CLASS + " .pg-item:first-child { margin-left: 0; }",
-        "." + ROOT_CLASS + " .pg-swatch { width: 0.5rem; height: 0.5rem; border-radius: 0.1rem; margin-right: 0.25rem; }",
-        "." + ROOT_CLASS + " .pg-val { min-width: 2.2rem; text-align: right; }",
-        "." + ROOT_CLASS + " .pg-nodata { font-size: 0.65rem; opacity: 0.6; }",
-        "." + ROOT_CLASS + " .pg-plot { display: flex; flex-direction: row; align-items: stretch; height: 6rem; }",
-        "." + ROOT_CLASS + " .pg-graph { position: relative; overflow: hidden; flex: 1 1 auto; height: 100%; background: rgba(255,255,255,0.04); }",
-        "." + ROOT_CLASS + " .pg-grid { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.10); }",
-        "." + ROOT_CLASS + " .pg-track { position: absolute; top: 0; left: 0; height: 100%; width: 200%; }",
-        "." + ROOT_CLASS + " .pg-bar { position: absolute; top: 0; height: 100%; transform-origin: 50% 100%; transform: scaleY(0); opacity: 0.75; }",
-        "." + ROOT_CLASS + " .pg-bars { display: flex; flex-direction: row; margin-left: 0.4rem; height: 100%; }",
-        "." + ROOT_CLASS + " .pg-lvl { position: relative; width: 0.45rem; margin-left: 0.2rem; background: rgba(255,255,255,0.08); overflow: hidden; }",
-        "." + ROOT_CLASS + " .pg-lvl > div { position: absolute; left: 0; right: 0; top: 0; bottom: 0; transform-origin: 50% 100%; transform: scaleY(0); }"
-    ].join("\n");
+    // ---- small helpers -----------------------------------------------------------
 
     const clamp = function (x, lo, hi) {
         if (x < lo) { return lo; }
@@ -96,54 +122,101 @@ const PedalGraph = (function () {
         return x;
     };
 
-    /** The stylesheet is shared by every widget on the page; inject it once. */
-    const injectStyle = function () {
-        if (document.getElementById(STYLE_ID)) { return; }
-
-        const style = document.createElement("style");
-
-        style.id = STYLE_ID;
-        style.textContent = CSS;
-        document.head.appendChild(style);
+    const log = function (message) {
+        console.log(LOG_PREFIX + " " + message);
     };
 
-    /** The widget's markup: legend, one 2N-bar strip per trace, level bars. */
+    const el = function (tag, className, attrs) {
+        let html = "<" + tag + " class=\"" + className + "\"";
+
+        Object.keys(attrs || {}).forEach(function (name) {
+            html += " " + name + "=\"" + attrs[name] + "\"";
+        });
+
+        return html + ">";
+    };
+
+    const close = function (tag) {
+        return "</" + tag + ">";
+    };
+
+    const scaleTransform = function (value) {
+        return "scaleY(" + value.toFixed(SCALE_DECIMALS) + ")";
+    };
+
+    const shiftTransform = function (percent) {
+        return "translateX(" + percent.toFixed(SHIFT_DECIMALS) + "%)";
+    };
+
+    const percentText = function (value) {
+        return Math.round(value * 100) + "%";
+    };
+
+    /** Write one history slot in both halves of a strip. */
+    const setSlot = function (track, slot, transform) {
+        track.bars[slot].style.transform = transform;
+        track.bars[slot + N].style.transform = transform;
+    };
+
+    const toArray = function (nodeList) {
+        return Array.prototype.slice.call(nodeList);
+    };
+
+    /** The attribute that keys an element to its trace colour in the stylesheet. */
+    const traceAttrs = function (index) {
+        const attrs = {};
+
+        attrs[TRACE_ATTR] = index;
+
+        return attrs;
+    };
+
+    // ---- markup ------------------------------------------------------------------
+
+    /** One trace's strip: two halves of N bars, laid out once, animated by transform. */
+    const stripMarkup = function (index) {
+        const barW = 100 / STRIP_BARS;
+        const width = (barW + BAR_OVERLAP_PCT).toFixed(LAYOUT_DECIMALS);
+        const bars = [];
+        let j;
+
+        for (j = 0; j < STRIP_BARS; j += 1) {
+            bars.push(el("div", CLASS.bar, { style: "left:" + (j * barW).toFixed(LAYOUT_DECIMALS) + "%;width:" + width + "%" }) + close("div"));
+        }
+
+        return el("div", CLASS.track, traceAttrs(index)) + bars.join("") + close("div");
+    };
+
+    /** The widget's markup: legend, one strip per trace, level bars. */
     const markup = function () {
-        const barW = 100 / (2 * N);
-        const barWStr = (barW + 0.02).toFixed(4);
         let legend = "";
         let tracks = "";
         let levels = "";
 
         TRACES.forEach(function (trace, index) {
-            const bars = [];
-            let j;
+            const traceAttr = traceAttrs(index);
 
-            legend += "<div class=\"pg-item\"><div class=\"pg-swatch\" style=\"background:" + trace.color + "\"></div>"
-                + trace.label + "<div class=\"pg-val\">0%</div></div>";
-
-            for (j = 0; j < 2 * N; j += 1) {
-                bars.push("<div class=\"pg-bar\" style=\"left:" + (j * barW).toFixed(4) + "%;width:" + barWStr
-                    + "%;background:" + trace.color + "\"></div>");
-            }
-
-            tracks += "<div class=\"pg-track\" data-trace=\"" + index + "\">" + bars.join("") + "</div>";
-            levels += "<div class=\"pg-lvl\"><div style=\"background:" + trace.color + "\"></div></div>";
+            legend += el("div", CLASS.item, traceAttr)
+                + el("div", CLASS.swatch) + close("div")
+                + trace.label
+                + el("div", CLASS.value) + "0%" + close("div")
+                + close("div");
+            tracks += stripMarkup(index);
+            levels += el("div", CLASS.level, traceAttr) + el("div", CLASS.fill) + close("div") + close("div");
         });
 
-        return "<div class=\"pg-header\">"
-            + "<div class=\"pg-legend\">" + legend + "</div>"
-            + "<div class=\"pg-nodata\">waiting for car data</div>"
-            + "</div>"
-            + "<div class=\"pg-plot\">"
-            + "<div class=\"pg-graph\">"
-            + "<div class=\"pg-grid\" style=\"top:25%\"></div>"
-            + "<div class=\"pg-grid\" style=\"top:50%\"></div>"
-            + "<div class=\"pg-grid\" style=\"top:75%\"></div>"
-            + tracks
-            + "</div>"
-            + "<div class=\"pg-bars\">" + levels + "</div>"
-            + "</div>";
+        const grid = GRID_LINES_PCT.map(function (pct) {
+            return el("div", CLASS.grid, { style: "top:" + pct + "%" }) + close("div");
+        }).join("");
+
+        return el("div", CLASS.header)
+            + el("div", CLASS.legend) + legend + close("div")
+            + el("div", CLASS.noData) + NO_DATA_TEXT + close("div")
+            + close("div")
+            + el("div", CLASS.plot)
+            + el("div", CLASS.graph) + grid + tracks + close("div")
+            + el("div", CLASS.levels) + levels + close("div")
+            + close("div");
     };
 
     /**
@@ -151,27 +224,24 @@ const PedalGraph = (function () {
      * return the widget's state. Everything the loop touches is looked up once.
      */
     const create = function (root) {
-        injectStyle();
-        root.classList.add(ROOT_CLASS);
+        root.classList.add(CLASS.root);
 
-        if (!root.querySelector(".pg-plot")) { root.innerHTML = markup(); }
-
-        const tracks = Array.prototype.map.call(root.querySelectorAll(".pg-track"), function (el) {
-            return { el: el, bars: Array.prototype.slice.call(el.querySelectorAll(".pg-bar")) };
-        });
+        if (!root.querySelector("." + CLASS.plot)) { root.innerHTML = markup(); }
 
         return {
             root: root,
-            tracks: tracks,
-            levels: Array.prototype.slice.call(root.querySelectorAll(".pg-lvl > div")),
-            vals: Array.prototype.slice.call(root.querySelectorAll(".pg-val")),
-            noData: root.querySelector(".pg-nodata"),
+            tracks: toArray(root.querySelectorAll("." + CLASS.track)).map(function (track) {
+                return { el: track, bars: toArray(track.querySelectorAll("." + CLASS.bar)) };
+            }),
+            levels: toArray(root.querySelectorAll("." + CLASS.level + " > ." + CLASS.fill)),
+            vals: toArray(root.querySelectorAll("." + CLASS.value)),
+            noData: root.querySelector("." + CLASS.noData),
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
             lastSampleAt: 0,            // timestamp of the last committed sample
             rafId: 0,
             lastLog: 0,
-            lastPct: TRACES.map(function () { return -1; }),
+            lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
             dragging: false,
             dragOffset: { x: 0, y: 0 },
@@ -199,54 +269,50 @@ const PedalGraph = (function () {
      * (second half of the strip), newest at the right edge.
      */
     const commitSample = function (state, v) {
-        const idx = (state.head + 1) % N;
+        const slot = (state.head + 1) % N;
 
-        TRACES.forEach(function (trace, t) {
-            const scale = "scaleY(" + v[t].toFixed(3) + ")";
-            const bars = state.tracks[t].bars;
-
-            bars[idx].style.transform = scale;
-            bars[idx + N].style.transform = scale;
+        state.tracks.forEach(function (track, t) {
+            setSlot(track, slot, scaleTransform(v[t]));
         });
 
-        state.head = idx;
+        state.head = slot;
     };
 
     /** Called every frame; `frac` (0..1) is how far we are towards the next sample. */
     const renderFrame = function (state, v, frac) {
-        const head = state.head;
-        const incoming = (head + 1) % N;
-        // strip is 200% wide; bar `head` at the right edge is shift = -(head+1)/(2N).
-        // Advancing by `frac` of a bar slides the incoming bar into view continuously.
-        const shift = -((head + 1 + frac) / (2 * N)) * 100;
-        const shiftStr = "translateX(" + shift.toFixed(4) + "%)";
+        const incoming = (state.head + 1) % N;
+        // bar `head` sits at the right edge when the strip is shifted by (head+1) bars;
+        // advancing by `frac` of a bar slides the incoming bar into view continuously
+        const shift = shiftTransform(-((state.head + 1 + frac) / STRIP_BARS) * 100);
         const slotAdvanced = incoming !== state.lastIncoming;
 
-        TRACES.forEach(function (trace, t) {
-            const track = state.tracks[t];
-            const scale = "scaleY(" + v[t].toFixed(3) + ")";
-            const pct = Math.round(v[t] * 100);
+        state.tracks.forEach(function (track, t) {
+            const scale = scaleTransform(v[t]);
+            const pct = percentText(v[t]);
 
-            track.el.style.transform = shiftStr;
+            track.el.style.transform = shift;
 
             if (scale !== state.lastScale[t]) {
                 state.lastScale[t] = scale;
-                track.bars[incoming].style.transform = scale;
-                track.bars[incoming + N].style.transform = scale;
+                setSlot(track, incoming, scale);
                 state.levels[t].style.transform = scale;
             } else if (slotAdvanced) {
                 // value unchanged but the incoming slot moved on: it still needs the live value
-                track.bars[incoming].style.transform = scale;
-                track.bars[incoming + N].style.transform = scale;
+                setSlot(track, incoming, scale);
             }
 
             if (pct !== state.lastPct[t]) {
                 state.lastPct[t] = pct;
-                state.vals[t].textContent = pct + "%";
+                state.vals[t].textContent = pct;
             }
         });
 
         state.lastIncoming = incoming;
+    };
+
+    const logSample = function (v) {
+        log("sampling ok thr=" + v[GAS].toFixed(LOG_DECIMALS) + " brk=" + v[BRAKE].toFixed(LOG_DECIMALS)
+            + " clu=" + v[CLUTCH].toFixed(LOG_DECIMALS) + " hbk=" + v[HANDBRAKE].toFixed(LOG_DECIMALS));
     };
 
     /** One animation frame: commit due samples, then draw. Reschedules itself. */
@@ -254,13 +320,14 @@ const PedalGraph = (function () {
         state.rafId = requestAnimationFrame(function (next) { tick(state, next); });
 
         const v = readModel();
+        const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
         if (!v) {
             state.lastSampleAt = 0;
 
-            if (now - state.lastLog > LOG_EVERY_MS) {
+            if (shouldLog) {
                 state.lastLog = now;
-                console.log("[PedalGraph] ModelCurrentCar not available yet");
+                log("ModelCurrentCar not available yet");
             }
 
             return;
@@ -279,16 +346,15 @@ const PedalGraph = (function () {
         }
 
         // nothing to draw while the HUD is toggled off; history keeps recording
-        if (document.body.classList.contains("hide-hud")) { return; }
+        if (document.body.classList.contains(HUD_HIDDEN_CLASS)) { return; }
 
         renderFrame(state, v, clamp((now - state.lastSampleAt) / SAMPLE_MS, 0, 1));
 
         if (state.noData.textContent) { state.noData.textContent = ""; }
 
-        if (now - state.lastLog > LOG_EVERY_MS) {
+        if (shouldLog) {
             state.lastLog = now;
-            console.log("[PedalGraph] sampling ok thr=" + v[GAS].toFixed(2) + " brk=" + v[BRAKE].toFixed(2)
-                + " clu=" + v[CLUTCH].toFixed(2) + " hbk=" + v[HANDBRAKE].toFixed(2));
+            logSample(v);
         }
     };
 
@@ -339,7 +405,7 @@ const PedalGraph = (function () {
         state.dragging = true;
         state.dragOffset.x = e.clientX - r.left;
         state.dragOffset.y = e.clientY - r.top;
-        state.root.classList.add("dragging");
+        state.root.classList.add(CLASS.dragging);
     };
 
     const onMouseMove = function (state, e) {
@@ -352,7 +418,7 @@ const PedalGraph = (function () {
         if (!state.dragging) { return; }
 
         state.dragging = false;
-        state.root.classList.remove("dragging");
+        state.root.classList.remove(CLASS.dragging);
         savePosition(state);
     };
 
@@ -378,7 +444,7 @@ const PedalGraph = (function () {
         restorePosition(state);
 
         state.rafId = requestAnimationFrame(function (now) { tick(state, now); });
-        console.log("[PedalGraph] widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
+        log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
 
         return state;
     };
@@ -388,7 +454,7 @@ const PedalGraph = (function () {
         cancelAnimationFrame(state.rafId);
         state.rafId = 0;
         state.dragging = false;
-        state.root.classList.remove("dragging");
+        state.root.classList.remove(CLASS.dragging);
 
         if (state.handlers) {
             state.root.removeEventListener("mousedown", state.handlers.down);
@@ -398,11 +464,18 @@ const PedalGraph = (function () {
         }
     };
 
+    log("script loaded, version=" + VERSION + ", source=" + (window.PEDALGRAPH_SOURCE || "unknown") + ", url=" + location.href);
+
     return {
+        VERSION: VERSION,
+        LOG_PREFIX: LOG_PREFIX,
         SAMPLE_HZ: SAMPLE_HZ,
         WINDOW_S: WINDOW_S,
         N: N,
         STORAGE_KEY: STORAGE_KEY,
+        ROOT_ID: ROOT_ID,
+        HUD_HIDDEN_CLASS: HUD_HIDDEN_CLASS,
+        CLASS: CLASS,
         TRACES: TRACES,
         clamp: clamp,
         create: create,
@@ -421,7 +494,7 @@ const PedalGraph = (function () {
 /** Boot: hud.html carries `<div id="pedalgraph">`; attach to it once the DOM exists. */
 (function () {
     const boot = function () {
-        const root = document.getElementById("pedalgraph");
+        const root = document.getElementById(PedalGraph.ROOT_ID);
 
         if (root) { PedalGraph.attach(root); }
     };
