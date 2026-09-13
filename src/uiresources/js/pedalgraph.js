@@ -20,6 +20,7 @@
 //   rendered frame (a) slides the strip by the fractional time since the last sample,
 //   so the scroll is continuous at any frame rate, and (b) writes the live pedal value
 //   into the incoming bar at the right edge, so the newest value never lags a sample.
+//   Style writes whose value did not change are skipped.
 
 console.log("[PedalGraph] script loaded, source=" + (window.PEDALGRAPH_SOURCE || "unknown") + ", url=" + location.href);
 
@@ -27,6 +28,8 @@ const SAMPLE_HZ = 50;              // history resolution, independent of frame r
 const WINDOW_S = 5;                // visible history in seconds
 const N = SAMPLE_HZ * WINDOW_S;    // bars per trace (250)
 const SAMPLE_MS = 1000 / SAMPLE_HZ;
+const WINDOW_MS = WINDOW_S * 1000;
+const LOG_EVERY_MS = 60000;
 const STORAGE_KEY = "acepedalgraph.pos";
 
 const TRACES = [
@@ -61,21 +64,63 @@ const CSS = [
     "ace-pedalgraph .pg-lvl > div { position: absolute; left: 0; right: 0; top: 0; bottom: 0; transform-origin: 50% 100%; transform: scaleY(0); }",
 ].join("\n");
 
+function clamp(x, lo, hi) {
+    return x < lo ? lo : (x > hi ? hi : x);
+}
+
 class PedalGraph extends HTMLElement {
 
     constructor() {
         super();
-        this.tracks = [];      // per trace: { el, bars: [2N elements] }
-        this.levels = [];      // per trace: level bar element
-        this.vals = [];        // per trace: numeric readout element
+        this.built = false;
+        this.tracks = [];          // per trace: { el, bars: [2N elements] }
+        this.levels = [];          // per trace: level bar element
+        this.vals = [];            // per trace: numeric readout element
+        this.noData = null;
         this.head = 0;             // index of the last committed sample
         this.lastSampleAt = 0;     // timestamp of the last committed sample
         this.rafId = 0;
         this.lastLog = 0;
         this.lastPct = [];
+        this.lastScale = [];       // last scaleY string written per trace (live bar + level)
+        this.dragging = false;
+        this.dragOffset = { x: 0, y: 0 };
+        this.tick = this.tick.bind(this);
+        this.onMouseDown = this.onMouseDown.bind(this);
+        this.onMouseMove = this.onMouseMove.bind(this);
+        this.onMouseUp = this.onMouseUp.bind(this);
     }
 
+    // ---- lifecycle ----------------------------------------------------------------
+
     connectedCallback() {
+        if (!this.built) {
+            this.build();
+            this.built = true;
+        }
+        this.addEventListener("mousedown", this.onMouseDown);
+        window.addEventListener("mousemove", this.onMouseMove);
+        window.addEventListener("mouseup", this.onMouseUp);
+
+        this.restorePosition();
+
+        if (!this.rafId) {
+            this.lastSampleAt = 0;
+            this.rafId = requestAnimationFrame(this.tick);
+        }
+        console.log("[PedalGraph] widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
+    }
+
+    disconnectedCallback() {
+        cancelAnimationFrame(this.rafId);
+        this.rafId = 0;
+        this.removeEventListener("mousedown", this.onMouseDown);
+        window.removeEventListener("mousemove", this.onMouseMove);
+        window.removeEventListener("mouseup", this.onMouseUp);
+        this.dragging = false;
+    }
+
+    build() {
         if (!document.getElementById("pedalgraph-style")) {
             const style = document.createElement("style");
             style.id = "pedalgraph-style";
@@ -84,17 +129,18 @@ class PedalGraph extends HTMLElement {
         }
 
         const barW = 100 / (2 * N);   // percent of the (200% wide) track
+        const barWStr = (barW + 0.02).toFixed(4);
         let legend = "";
         let tracks = "";
         let levels = "";
         for (let t = 0; t < TRACES.length; t++) {
             const tr = TRACES[t];
             legend += '<div class="pg-item"><div class="pg-swatch" style="background:' + tr.color + '"></div>' + tr.label + '<div class="pg-val">0%</div></div>';
-            let bars = "";
+            const bars = [];
             for (let j = 0; j < 2 * N; j++) {
-                bars += '<div class="pg-bar" style="left:' + (j * barW).toFixed(4) + '%;width:' + (barW + 0.02).toFixed(4) + '%;background:' + tr.color + '"></div>';
+                bars.push('<div class="pg-bar" style="left:' + (j * barW).toFixed(4) + '%;width:' + barWStr + '%;background:' + tr.color + '"></div>');
             }
-            tracks += '<div class="pg-track" data-trace="' + t + '">' + bars + '</div>';
+            tracks += '<div class="pg-track" data-trace="' + t + '">' + bars.join("") + '</div>';
             levels += '<div class="pg-lvl"><div style="background:' + tr.color + '"></div></div>';
         }
 
@@ -121,20 +167,10 @@ class PedalGraph extends HTMLElement {
         this.vals = Array.from(this.querySelectorAll(".pg-val"));
         this.noData = this.querySelector(".pg-nodata");
         this.lastPct = TRACES.map(() => -1);
-
-        this.restorePosition();
-        this.setupDrag();
-
-        this.tick = this.tick.bind(this);
-        this.rafId = requestAnimationFrame(this.tick);
-        console.log("[PedalGraph] widget attached, bars per trace=" + N + ", sample rate=" + SAMPLE_HZ + " Hz");
+        this.lastScale = TRACES.map(() => "");
     }
 
-    disconnectedCallback() {
-        cancelAnimationFrame(this.rafId);
-    }
-
-    // ---- data -----------------------------------------------------------------
+    // ---- data -----------------------------------------------------------------------
 
     readModel() {
         const car = window["ModelCurrentCar"];
@@ -142,43 +178,48 @@ class PedalGraph extends HTMLElement {
         const v = [];
         for (let t = 0; t < TRACES.length; t++) {
             const x = car[TRACES[t].key];
-            v.push(typeof x === "number" ? Math.min(1, Math.max(0, x)) : 0);
+            v.push(typeof x === "number" ? clamp(x, 0, 1) : 0);
         }
         return v;
     }
 
     tick(now) {
+        this.rafId = requestAnimationFrame(this.tick);
+
         const v = this.readModel();
-        if (v) {
-            if (this.lastSampleAt === 0) this.lastSampleAt = now;
-
-            // commit history samples at the fixed rate; catch up after a hitch,
-            // but never spin through more than one window of samples
-            let committed = 0;
-            while (now - this.lastSampleAt >= SAMPLE_MS && committed < N) {
-                this.lastSampleAt += SAMPLE_MS;
-                this.commitSample(v);
-                committed++;
-            }
-
-            // per-frame part: fractional scroll + live value in the incoming bar
-            const frac = Math.min(1, (now - this.lastSampleAt) / SAMPLE_MS);
-            this.renderFrame(v, frac);
-
-            if (this.noData.textContent) this.noData.textContent = "";
-            if (now - this.lastLog > 15000) {
-                this.lastLog = now;
-                console.log("[PedalGraph] sampling ok thr=" + v[3].toFixed(2) + " brk=" + v[2].toFixed(2) +
-                    " clu=" + v[0].toFixed(2) + " hbk=" + v[1].toFixed(2));
-            }
-        } else {
+        if (!v) {
             this.lastSampleAt = 0;
-            if (now - this.lastLog > 15000) {
+            if (now - this.lastLog > LOG_EVERY_MS) {
                 this.lastLog = now;
                 console.log("[PedalGraph] ModelCurrentCar not available yet");
             }
+            return;
         }
-        this.rafId = requestAnimationFrame(this.tick);
+
+        // first sample, or a stall longer than the whole window: restart the clock
+        // instead of replaying hundreds of identical samples
+        if (this.lastSampleAt === 0 || now - this.lastSampleAt > WINDOW_MS) {
+            this.lastSampleAt = now;
+        }
+
+        // commit history at the fixed rate (catches up after short hitches)
+        while (now - this.lastSampleAt >= SAMPLE_MS) {
+            this.lastSampleAt += SAMPLE_MS;
+            this.commitSample(v);
+        }
+
+        // nothing to draw while the HUD is toggled off; history keeps recording
+        if (document.body.classList.contains("hide-hud")) return;
+
+        const frac = clamp((now - this.lastSampleAt) / SAMPLE_MS, 0, 1);
+        this.renderFrame(v, frac);
+
+        if (this.noData.textContent) this.noData.textContent = "";
+        if (now - this.lastLog > LOG_EVERY_MS) {
+            this.lastLog = now;
+            console.log("[PedalGraph] sampling ok thr=" + v[3].toFixed(2) + " brk=" + v[2].toFixed(2) +
+                " clu=" + v[0].toFixed(2) + " hbk=" + v[1].toFixed(2));
+        }
     }
 
     // Write a sample into the next history slot. Visible bars are head+1 .. head+N
@@ -187,9 +228,9 @@ class PedalGraph extends HTMLElement {
         const idx = (this.head + 1) % N;
         for (let t = 0; t < TRACES.length; t++) {
             const scale = "scaleY(" + v[t].toFixed(3) + ")";
-            const trk = this.tracks[t];
-            trk.bars[idx].style.transform = scale;
-            trk.bars[idx + N].style.transform = scale;
+            const bars = this.tracks[t].bars;
+            bars[idx].style.transform = scale;
+            bars[idx + N].style.transform = scale;
         }
         this.head = idx;
     }
@@ -203,58 +244,82 @@ class PedalGraph extends HTMLElement {
         const shift = -((head + 1 + frac) / (2 * N)) * 100;
         const shiftStr = "translateX(" + shift.toFixed(4) + "%)";
         for (let t = 0; t < TRACES.length; t++) {
-            const scale = "scaleY(" + v[t].toFixed(3) + ")";
             const trk = this.tracks[t];
             trk.el.style.transform = shiftStr;
-            trk.bars[incoming].style.transform = scale;
-            trk.bars[incoming + N].style.transform = scale;
 
-            this.levels[t].style.transform = scale;
+            const scale = "scaleY(" + v[t].toFixed(3) + ")";
+            if (scale !== this.lastScale[t]) {
+                this.lastScale[t] = scale;
+                trk.bars[incoming].style.transform = scale;
+                trk.bars[incoming + N].style.transform = scale;
+                this.levels[t].style.transform = scale;
+            } else if (incoming !== this.lastIncoming) {
+                // value unchanged but the incoming slot advanced: it still needs the live value
+                trk.bars[incoming].style.transform = scale;
+                trk.bars[incoming + N].style.transform = scale;
+            }
+
             const pct = Math.round(v[t] * 100);
             if (pct !== this.lastPct[t]) {
                 this.lastPct[t] = pct;
                 this.vals[t].textContent = pct + "%";
             }
         }
+        this.lastIncoming = incoming;
     }
 
-    // ---- drag / position -------------------------------------------------------
+    // ---- drag / position ------------------------------------------------------------
 
-    setupDrag() {
-        let dragging = false, ox = 0, oy = 0;
-        this.addEventListener("mousedown", (e) => {
-            dragging = true;
-            const r = this.getBoundingClientRect();
-            ox = e.clientX - r.left;
-            oy = e.clientY - r.top;
-            this.classList.add("dragging");
-        });
-        window.addEventListener("mousemove", (e) => {
-            if (!dragging) return;
+    onMouseDown(e) {
+        this.dragging = true;
+        const r = this.getBoundingClientRect();
+        this.dragOffset.x = e.clientX - r.left;
+        this.dragOffset.y = e.clientY - r.top;
+        this.classList.add("dragging");
+    }
+
+    onMouseMove(e) {
+        if (!this.dragging) return;
+        this.moveTo(e.clientX - this.dragOffset.x, e.clientY - this.dragOffset.y);
+    }
+
+    onMouseUp() {
+        if (!this.dragging) return;
+        this.dragging = false;
+        this.classList.remove("dragging");
+        this.savePosition();
+    }
+
+    // Place the widget at viewport coordinates, clamped so it stays fully on screen.
+    moveTo(clientX, clientY) {
+        const parent = this.parentElement.getBoundingClientRect();
+        const w = this.offsetWidth, h = this.offsetHeight;
+        const x = clamp(clientX - parent.left, 0, Math.max(0, parent.width - w));
+        const y = clamp(clientY - parent.top, 0, Math.max(0, parent.height - h));
+        this.style.left = Math.round(x) + "px";
+        this.style.top = Math.round(y) + "px";
+        this.style.bottom = "auto";
+    }
+
+    // Stored as fractions of the parent so the position survives resolution changes.
+    savePosition() {
+        try {
             const parent = this.parentElement.getBoundingClientRect();
-            this.style.left = Math.round(e.clientX - ox - parent.left) + "px";
-            this.style.top = Math.round(e.clientY - oy - parent.top) + "px";
-            this.style.bottom = "auto";
-        });
-        window.addEventListener("mouseup", () => {
-            if (!dragging) return;
-            dragging = false;
-            this.classList.remove("dragging");
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({ left: this.style.left, top: this.style.top }));
-            } catch (err) { /* storage unavailable */ }
-        });
+            const r = this.getBoundingClientRect();
+            const pos = {
+                fx: parent.width > 0 ? (r.left - parent.left) / parent.width : 0,
+                fy: parent.height > 0 ? (r.top - parent.top) / parent.height : 0
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+        } catch (err) { /* storage unavailable */ }
     }
 
     restorePosition() {
-        try {
-            const pos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-            if (pos && pos.left && pos.top) {
-                this.style.left = pos.left;
-                this.style.top = pos.top;
-                this.style.bottom = "auto";
-            }
-        } catch (err) { /* ignore */ }
+        let pos = null;
+        try { pos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch (err) { return; }
+        if (!pos || typeof pos.fx !== "number" || typeof pos.fy !== "number") return;
+        const parent = this.parentElement.getBoundingClientRect();
+        this.moveTo(parent.left + pos.fx * parent.width, parent.top + pos.fy * parent.height);
     }
 }
 
