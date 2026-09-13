@@ -15,12 +15,18 @@
 //   Each trace is a strip of 2*N thin bars (two identical halves). A new sample writes
 //   one bar in each half and slides the strip left by one bar, so the newest sample is
 //   always at the right edge and the wrap-around is invisible.
+//
+//   Smoothness: samples are committed to the history at a fixed SAMPLE_HZ, but every
+//   rendered frame (a) slides the strip by the fractional time since the last sample,
+//   so the scroll is continuous at any frame rate, and (b) writes the live pedal value
+//   into the incoming bar at the right edge, so the newest value never lags a sample.
 
 console.log("[PedalGraph] script loaded, source=" + (window.PEDALGRAPH_SOURCE || "unknown") + ", url=" + location.href);
 
-const SAMPLE_HZ = 25;              // fixed sampling rate, independent of frame rate
+const SAMPLE_HZ = 50;              // history resolution, independent of frame rate
 const WINDOW_S = 5;                // visible history in seconds
-const N = SAMPLE_HZ * WINDOW_S;    // bars per trace (125)
+const N = SAMPLE_HZ * WINDOW_S;    // bars per trace (250)
+const SAMPLE_MS = 1000 / SAMPLE_HZ;
 const STORAGE_KEY = "acepedalgraph.pos";
 
 const TRACES = [
@@ -62,8 +68,8 @@ class PedalGraph extends HTMLElement {
         this.tracks = [];      // per trace: { el, bars: [2N elements] }
         this.levels = [];      // per trace: level bar element
         this.vals = [];        // per trace: numeric readout element
-        this.head = 0;
-        this.nextSampleAt = 0;
+        this.head = 0;             // index of the last committed sample
+        this.lastSampleAt = 0;     // timestamp of the last committed sample
         this.rafId = 0;
         this.lastLog = 0;
         this.lastPct = [];
@@ -142,18 +148,32 @@ class PedalGraph extends HTMLElement {
     }
 
     tick(now) {
-        if (now >= this.nextSampleAt) {
-            this.nextSampleAt = now + 1000 / SAMPLE_HZ;
-            const v = this.readModel();
-            if (v) {
-                this.pushSample(v);
-                if (this.noData.textContent) this.noData.textContent = "";
-                if (now - this.lastLog > 15000) {
-                    this.lastLog = now;
-                    console.log("[PedalGraph] sampling ok thr=" + v[3].toFixed(2) + " brk=" + v[2].toFixed(2) +
-                        " clu=" + v[0].toFixed(2) + " hbk=" + v[1].toFixed(2));
-                }
-            } else if (now - this.lastLog > 15000) {
+        const v = this.readModel();
+        if (v) {
+            if (this.lastSampleAt === 0) this.lastSampleAt = now;
+
+            // commit history samples at the fixed rate; catch up after a hitch,
+            // but never spin through more than one window of samples
+            let committed = 0;
+            while (now - this.lastSampleAt >= SAMPLE_MS && committed < N) {
+                this.lastSampleAt += SAMPLE_MS;
+                this.commitSample(v);
+                committed++;
+            }
+
+            // per-frame part: fractional scroll + live value in the incoming bar
+            const frac = Math.min(1, (now - this.lastSampleAt) / SAMPLE_MS);
+            this.renderFrame(v, frac);
+
+            if (this.noData.textContent) this.noData.textContent = "";
+            if (now - this.lastLog > 15000) {
+                this.lastLog = now;
+                console.log("[PedalGraph] sampling ok thr=" + v[3].toFixed(2) + " brk=" + v[2].toFixed(2) +
+                    " clu=" + v[0].toFixed(2) + " hbk=" + v[1].toFixed(2));
+            }
+        } else {
+            this.lastSampleAt = 0;
+            if (now - this.lastLog > 15000) {
                 this.lastLog = now;
                 console.log("[PedalGraph] ModelCurrentCar not available yet");
             }
@@ -161,16 +181,33 @@ class PedalGraph extends HTMLElement {
         this.rafId = requestAnimationFrame(this.tick);
     }
 
-    pushSample(v) {
-        const head = this.head;
-        // the strip is 200% wide; shift so that bar `head` sits at the right edge
-        const shift = -((head + 1) / (2 * N)) * 100;
+    // Write a sample into the next history slot. Visible bars are head+1 .. head+N
+    // (second half of the strip), newest at the right edge.
+    commitSample(v) {
+        const idx = (this.head + 1) % N;
         for (let t = 0; t < TRACES.length; t++) {
             const scale = "scaleY(" + v[t].toFixed(3) + ")";
             const trk = this.tracks[t];
-            trk.bars[head].style.transform = scale;
-            trk.bars[head + N].style.transform = scale;
-            trk.el.style.transform = "translateX(" + shift.toFixed(4) + "%)";
+            trk.bars[idx].style.transform = scale;
+            trk.bars[idx + N].style.transform = scale;
+        }
+        this.head = idx;
+    }
+
+    // Called every frame. `frac` (0..1) is how far we are towards the next sample.
+    renderFrame(v, frac) {
+        const head = this.head;
+        const incoming = (head + 1) % N;
+        // strip is 200% wide; bar `head` at the right edge is shift = -(head+1)/(2N).
+        // Advancing by `frac` of a bar slides the incoming bar into view continuously.
+        const shift = -((head + 1 + frac) / (2 * N)) * 100;
+        const shiftStr = "translateX(" + shift.toFixed(4) + "%)";
+        for (let t = 0; t < TRACES.length; t++) {
+            const scale = "scaleY(" + v[t].toFixed(3) + ")";
+            const trk = this.tracks[t];
+            trk.el.style.transform = shiftStr;
+            trk.bars[incoming].style.transform = scale;
+            trk.bars[incoming + N].style.transform = scale;
 
             this.levels[t].style.transform = scale;
             const pct = Math.round(v[t] * 100);
@@ -179,7 +216,6 @@ class PedalGraph extends HTMLElement {
                 this.vals[t].textContent = pct + "%";
             }
         }
-        this.head = (head + 1) % N;
     }
 
     // ---- drag / position -------------------------------------------------------
