@@ -36,7 +36,7 @@
 const PedalGraph = (function () {
 
     /** Mod version -- keep in step with the VERSION file at the repo root. */
-    const VERSION = "0.2.1";
+    const VERSION = "0.2.2";
 
     /** Prefix of every log line; the game log and the tests grep for it. */
     const LOG_PREFIX = "[PedalGraph]";
@@ -64,7 +64,18 @@ const PedalGraph = (function () {
     /** Horizontal reference lines, as percent of the graph height from the top. */
     const GRID_LINES_PCT = [25, 50, 75];
 
+    /**
+     * Position persistence. Primary store: the stock HUD's layout container
+     * (`HUD.elementModified(id, ...)` / `HUD.StoredData.layouts[...].elements[id]`),
+     * which the game writes to disk when the HUD closes and reads back on every
+     * HUD load -- the same path the stock widgets use. Fallback: localStorage,
+     * which only lives as long as the UI view. The HUD's container initialises a
+     * little after this widget attaches, so restoring is deferred and retried
+     * until the entry appears or RESTORE_WAIT_MS pass, then the fallback is read.
+     */
+    const HUD_ELEMENT_ID = "hud_pedalgraph";
     const STORAGE_KEY = "acepedalgraph.pos";
+    const RESTORE_WAIT_MS = 2000;
     /** Element id hud.html gives the widget's root; the boot block attaches to it. */
     const ROOT_ID = "pedalgraph";
     /** The stock HUD toggles this class on <body> when the HUD is hidden. */
@@ -74,6 +85,7 @@ const PedalGraph = (function () {
     const CLASS = {
         root: "ace-pedalgraph",
         dragging: "dragging",
+        positioning: "pg-positioning",
         header: "pg-header",
         legend: "pg-legend",
         item: "pg-item",
@@ -245,7 +257,9 @@ const PedalGraph = (function () {
             lastScale: TRACES.map(function () { return ""; }),
             dragging: false,
             dragOffset: { x: 0, y: 0 },
-            handlers: null
+            handlers: null,
+            attachedAt: 0,              // timestamp of the first frame after attach
+            restored: false             // position restore done (or given up)
         };
     };
 
@@ -319,6 +333,8 @@ const PedalGraph = (function () {
     const tick = function (state, now) {
         state.rafId = requestAnimationFrame(function (next) { tick(state, next); });
 
+        if (!state.restored) { maybeRestore(state, now); }
+
         const v = readModel();
         const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
@@ -372,31 +388,128 @@ const PedalGraph = (function () {
         root.style.bottom = "auto";
     };
 
-    /** Stored as fractions of the parent so the position survives resolution changes. */
-    const savePosition = function (state) {
-        try {
-            const parent = state.root.parentElement.getBoundingClientRect();
-            const r = state.root.getBoundingClientRect();
+    /** The stock HUD's layout store for the current layout, or null when not ready. */
+    const hudElements = function () {
+        const hud = window.HUD;
 
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                fx: parent.width > 0 ? (r.left - parent.left) / parent.width : 0,
-                fy: parent.height > 0 ? (r.top - parent.top) / parent.height : 0
-            }));
-        } catch (ignore) { /* storage unavailable: the position is simply not remembered */ }
+        if (!hud || !hud.StoredData || !hud.StoredData.layouts) { return null; }
+
+        const layout = hud.StoredData.layouts[hud.currentLayout || hud.StoredData.lastLayout || "default"];
+
+        return layout && layout.elements ? layout.elements : null;
     };
 
-    const restorePosition = function (state) {
-        let pos = null;
+    const isPosition = function (pos) {
+        return Boolean(pos) && typeof pos.fx === "number" && typeof pos.fy === "number";
+    };
+
+    /**
+     * Current position as fractions of the parent (resolution independent), plus the
+     * pixel form the stock layout code expects on every element it stores.
+     */
+    const currentPosition = function (state) {
+        const parent = state.root.parentElement.getBoundingClientRect();
+        const r = state.root.getBoundingClientRect();
+
+        return {
+            fx: parent.width > 0 ? (r.left - parent.left) / parent.width : 0,
+            fy: parent.height > 0 ? (r.top - parent.top) / parent.height : 0,
+            x: state.root.style.left,
+            y: state.root.style.top
+        };
+    };
+
+    const savePosition = function (state) {
+        const pos = currentPosition(state);
+        const where = [];
+
+        if (window.HUD && typeof window.HUD.elementModified === "function") {
+            window.HUD.elementModified(HUD_ELEMENT_ID, pos);
+            where.push("hud layout");
+        }
 
         try {
-            pos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-        } catch (ignore) { /* unreadable store: keep the stylesheet's default position */ }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+            where.push("localStorage");
+        } catch (ignore) { /* storage unavailable: the HUD layout store is the one that matters */ }
 
-        if (!pos || typeof pos.fx !== "number" || typeof pos.fy !== "number") { return; }
+        log("position saved fx=" + pos.fx.toFixed(3) + " fy=" + pos.fy.toFixed(3) + " to " + (where.join(", ") || "nowhere"));
+    };
 
+    const readLocalPosition = function () {
+        try {
+            return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        } catch (ignore) { /* unreadable store: treated as no stored position */ }
+
+        return null;
+    };
+
+    const applyPosition = function (state, pos, source) {
         const parent = state.root.parentElement.getBoundingClientRect();
 
         moveTo(state, parent.left + pos.fx * parent.width, parent.top + pos.fy * parent.height);
+        log("position restored from " + source + " fx=" + pos.fx.toFixed(3) + " fy=" + pos.fy.toFixed(3));
+    };
+
+    const parentHasSize = function (state) {
+        const parent = state.root.parentElement.getBoundingClientRect();
+
+        return parent.width > 0 && parent.height > 0;
+    };
+
+    /** Restore is settled: show the widget where it is. */
+    const finishRestore = function (state) {
+        state.restored = true;
+        state.root.classList.remove(CLASS.positioning);
+    };
+
+    /**
+     * Synchronous first attempt at attach time: localStorage survives the HUD page
+     * reload that Escape/resume causes, so in the common case the widget is placed
+     * before its first paint. The HUD store, when it arrives, still has the last word.
+     */
+    const restoreImmediately = function (state) {
+        const fromLocal = readLocalPosition();
+
+        if (!isPosition(fromLocal) || !parentHasSize(state)) { return; }
+
+        applyPosition(state, fromLocal, "localStorage (immediate)");
+        state.root.classList.remove(CLASS.positioning);
+    };
+
+    /**
+     * Called every frame until settled. Waits for layout (a zero-size parent would
+     * clamp the widget into the corner). The stock HUD object only appears once its
+     * layout store has loaded, so its presence decides at once: our entry, else the
+     * localStorage fallback, else the stylesheet default. Without a HUD object the
+     * same fallback runs after RESTORE_WAIT_MS.
+     */
+    const maybeRestore = function (state, now) {
+        if (!parentHasSize(state)) { return; }
+
+        if (state.attachedAt === 0) { state.attachedAt = now; }
+
+        const elements = hudElements();
+        const fromHud = elements ? elements[HUD_ELEMENT_ID] : null;
+
+        if (isPosition(fromHud)) {
+            applyPosition(state, fromHud, "hud layout");
+            finishRestore(state);
+
+            return;
+        }
+
+        if (!elements && now - state.attachedAt < RESTORE_WAIT_MS) { return; }
+
+        const fromLocal = readLocalPosition();
+
+        if (isPosition(fromLocal)) {
+            applyPosition(state, fromLocal, "localStorage");
+        } else {
+            log("no stored position (hud layout " + (elements ? "has no entry" : "not available") + "), keeping default");
+        }
+
+        finishRestore(state);
     };
 
     const onMouseDown = function (state, e) {
@@ -440,8 +553,11 @@ const PedalGraph = (function () {
         root.addEventListener("mousedown", state.handlers.down);
         window.addEventListener("mousemove", state.handlers.move);
         window.addEventListener("mouseup", state.handlers.up);
+        document.addEventListener("mouseup", state.handlers.up);
 
-        restorePosition(state);
+        // hidden until positioned; immediate attempt now, the HUD store settles it in the loop
+        root.classList.add(CLASS.positioning);
+        restoreImmediately(state);
 
         state.rafId = requestAnimationFrame(function (now) { tick(state, now); });
         log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
@@ -455,11 +571,13 @@ const PedalGraph = (function () {
         state.rafId = 0;
         state.dragging = false;
         state.root.classList.remove(CLASS.dragging);
+        state.root.classList.remove(CLASS.positioning);
 
         if (state.handlers) {
             state.root.removeEventListener("mousedown", state.handlers.down);
             window.removeEventListener("mousemove", state.handlers.move);
             window.removeEventListener("mouseup", state.handlers.up);
+            document.removeEventListener("mouseup", state.handlers.up);
             state.handlers = null;
         }
     };
@@ -473,6 +591,8 @@ const PedalGraph = (function () {
         WINDOW_S: WINDOW_S,
         N: N,
         STORAGE_KEY: STORAGE_KEY,
+        HUD_ELEMENT_ID: HUD_ELEMENT_ID,
+        RESTORE_WAIT_MS: RESTORE_WAIT_MS,
         ROOT_ID: ROOT_ID,
         HUD_HIDDEN_CLASS: HUD_HIDDEN_CLASS,
         CLASS: CLASS,
@@ -485,7 +605,7 @@ const PedalGraph = (function () {
         tick: tick,
         moveTo: moveTo,
         savePosition: savePosition,
-        restorePosition: restorePosition,
+        maybeRestore: maybeRestore,
         attach: attach,
         detach: detach
     };

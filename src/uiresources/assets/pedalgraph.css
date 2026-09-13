@@ -29,6 +29,11 @@
     border-color: #bd0000;
 }
 
+/* invisible until the stored position has been applied, so it never jumps into place */
+.ace-pedalgraph.pg-positioning {
+    visibility: hidden;
+}
+
 body.hide-hud .ace-pedalgraph {
     visibility: hidden;
 }

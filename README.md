@@ -1,7 +1,7 @@
 # ACE PedalGraph
 
 HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle,
-brake, clutch and handbrake input. Version 0.2.1, working as of 2026-09-14 on
+brake, clutch and handbrake input. Version 0.2.2, working as of 2026-09-14 on
 game version 0.9.1+release.6.
 
 ## Layout
@@ -13,8 +13,9 @@ game version 0.9.1+release.6.
   (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
-  Draggable, remembers its position (as a fraction of the screen) in
-  `localStorage`, hides with the HUD. Writes no colours or sizes, only
+  Draggable; its position is stored as a fraction of the screen in the stock
+  HUD layout container (`HUD.elementModified`, persisted by the game) with
+  `localStorage` as fallback; hides with the HUD. Writes no colours or sizes, only
   transforms; every class name, timing and precision is a named constant.
 - `src/uiresources/assets/pedalgraph.css` - all styling, including the trace
   colours keyed by `data-trace` index. (It sits under `assets/` from an
@@ -63,7 +64,7 @@ rendering still needs one in-game run, checked with `tools/check_ingame_log.py`.
 
 `VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
 it in `const VERSION`, logs it in its first line (`script loaded,
-version=0.2.1, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
+version=0.2.2, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
 fails if the two disagree or if this README stops mentioning the current
 version, so bumping means: edit `VERSION`, edit the constant, mention it here,
 rebuild. `tools/check_ingame_log.py` prints the version the game actually ran.
@@ -72,7 +73,8 @@ History: 0.1.0 proof of concept (custom element, module script);
 0.2.0 IIFE module in project style, external stylesheet, named constants,
 version stamp, preview page, test suite; 0.2.1 the game's override
 resolution reverse-engineered and replayed by the packer (padding), so the
-package no longer depends on luck.
+package no longer depends on luck; 0.2.2 position persisted through the
+stock HUD layout store (survives Escape/resume and game restarts).
 
 ## Code style (JavaScript)
 

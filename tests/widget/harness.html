@@ -208,24 +208,145 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         ok(!root.classList.contains("dragging"));
         const saved = JSON.parse(localStorage.getItem(PedalGraph.STORAGE_KEY));
         near(saved.fx, 500 / c.width, 0.001, "fx"); near(saved.fy, 350 / c.height, 0.001, "fy");
+        eq(saved.x, "500px", "pixel x kept for the stock layout code"); eq(saved.y, "350px", "pixel y");
     });
 
-    t("a second widget restores the saved fractional position", function () {
+    // stand-in for the stock HUD's layout store (window.HUD in game)
+    const makeHud = function (elements) {
+        const hud = { currentLayout: "default", StoredData: { lastLayout: "default", layouts: { default: { elements: elements || {} } } } };
+        hud.elementModified = function (id, props) { hud.StoredData.layouts.default.elements[id] = props; };
+        return hud;
+    };
+    const HUD_ID = PedalGraph.HUD_ELEMENT_ID;
+    const WAIT = PedalGraph.RESTORE_WAIT_MS;
+
+    t("drag end also writes the stock HUD layout store when it exists", function () {
+        window.HUD = makeHud();
+        const r = root.getBoundingClientRect();
+        mouse("mousedown", r.left + 5, r.top + 5, root);
+        mouse("mousemove", r.left + 5 + 20, r.top + 5 + 10);
+        mouse("mouseup", 0, 0);
+        const entry = window.HUD.StoredData.layouts.default.elements[HUD_ID];
+        ok(entry, "no entry written to HUD store");
+        const c = center.getBoundingClientRect();
+        near(entry.fx, 520 / c.width, 0.001, "hud fx"); near(entry.fy, 360 / c.height, 0.001, "hud fy");
+        eq(entry.x, "520px", "hud x"); eq(entry.y, "360px", "hud y");
+        ok(window.__log.some(function (l) { return l.indexOf("position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged");
+    });
+
+    t("localStorage position is applied synchronously at attach, before any frame", function () {
+        window.HUD = null;
+        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ fx: 0.2, fy: 0.3 }));
         const root2 = document.createElement("div");
         center.appendChild(root2);
         const state2 = PedalGraph.attach(root2);
-        eq(root2.style.left, "500px", "restored left"); eq(root2.style.top, "350px", "restored top");
+        const c = center.getBoundingClientRect();
+        eq(root2.style.left, Math.round(0.2 * c.width) + "px", "placed immediately");
+        ok(!root2.classList.contains("pg-positioning"), "visible right away");
+        ok(!state2.restored, "HUD store still has the last word");
+        PedalGraph.detach(state2); root2.remove();
+        localStorage.clear();
+    });
+
+    t("nothing stored: hidden until the HUD store has been consulted, then shown at default", function () {
+        localStorage.clear();
+        window.HUD = null;
+        const root2 = document.createElement("div");
+        center.appendChild(root2);
+        const state2 = PedalGraph.attach(root2);
+        ok(root2.classList.contains("pg-positioning"), "hidden while positioning");
+        eq(root2.style.left, "", "nothing applied synchronously");
+        window.HUD = makeHud({});
+        clock.step(100000);
+        eq(root2.style.left, "", "stays at stylesheet default");
+        ok(state2.restored, "settled as soon as the HUD store was available");
+        ok(!root2.classList.contains("pg-positioning"), "shown");
         PedalGraph.detach(state2); root2.remove();
     });
 
-    t("legacy pixel positions are ignored", function () {
-        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ left: "5px", top: "5px" }));
+    t("HUD store entry wins and is applied in the frame loop", function () {
+        localStorage.clear();
+        window.HUD = makeHud({});
+        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.25, fy: 0.5 };
+        const root2 = document.createElement("div");
+        center.appendChild(root2);
+        const state2 = PedalGraph.attach(root2);
+        eq(root2.style.left, "", "nothing applied synchronously without localStorage");
+        clock.step(105000);
+        const c = center.getBoundingClientRect();
+        eq(root2.style.left, Math.round(0.25 * c.width) + "px", "restored left from HUD store");
+        eq(root2.style.top, Math.round(0.5 * c.height) + "px", "restored top from HUD store");
+        ok(state2.restored && !root2.classList.contains("pg-positioning"), "settled and shown");
+        PedalGraph.detach(state2); root2.remove();
+    });
+
+    t("HUD store arriving late is picked up within the wait window", function () {
+        localStorage.clear();
+        window.HUD = null;
         const root3 = document.createElement("div");
         center.appendChild(root3);
         const state3 = PedalGraph.attach(root3);
-        eq(root3.style.left, "", "no left applied");
+        clock.step(110000); clock.step(110016);
+        eq(root3.style.left, "", "still default while nothing is stored");
+        ok(root3.classList.contains("pg-positioning"), "still hidden");
+        window.HUD = makeHud({});
+        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.1, fy: 0.2 };
+        clock.step(110032);
+        const c = center.getBoundingClientRect();
+        eq(root3.style.left, Math.round(0.1 * c.width) + "px", "restored once the HUD store appeared");
         PedalGraph.detach(state3); root3.remove();
+    });
+
+    t("no HUD object at all: localStorage fallback after the wait window", function () {
+        window.HUD = null;
         localStorage.clear();
+        const root4 = document.createElement("div");
+        center.appendChild(root4);
+        const state4 = PedalGraph.attach(root4);
+        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ fx: 0.3, fy: 0.4 }));  // saved later in the session
+        clock.step(120000);
+        clock.step(120000 + WAIT - 1);
+        eq(root4.style.left, "", "not yet: waiting for a HUD object");
+        clock.step(120000 + WAIT);
+        const c = center.getBoundingClientRect();
+        eq(root4.style.left, Math.round(0.3 * c.width) + "px", "fallback applied after the wait");
+        ok(state4.restored, "marked restored");
+        PedalGraph.detach(state4); root4.remove();
+    });
+
+    t("legacy pixel-only positions are ignored", function () {
+        window.HUD = makeHud({});
+        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ left: "5px", top: "5px" }));
+        const root5 = document.createElement("div");
+        center.appendChild(root5);
+        const state5 = PedalGraph.attach(root5);
+        eq(root5.style.left, "", "nothing applied synchronously");
+        clock.step(130000);
+        eq(root5.style.left, "", "no left applied");
+        ok(state5.restored, "gave up cleanly");
+        PedalGraph.detach(state5); root5.remove();
+        localStorage.clear();
+    });
+
+    t("restore waits for layout: a zero-size container defers it", function () {
+        window.HUD = makeHud({});
+        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.5, fy: 0.5 };
+        const hidden = document.createElement("div");
+        hidden.className = "absolutecenter"; hidden.style.display = "none";
+        document.body.appendChild(hidden);
+        const root6 = document.createElement("div");
+        hidden.appendChild(root6);
+        const state6 = PedalGraph.attach(root6);
+        clock.step(140000); clock.step(140000 + WAIT + 100);
+        eq(root6.style.left, "", "nothing applied while the container has no size");
+        ok(!state6.restored, "still pending");
+        hidden.style.display = "block";
+        clock.step(140000 + WAIT + 200);
+        const c = hidden.getBoundingClientRect();
+        eq(root6.style.left, Math.round(0.5 * c.width) + "px", "applied once laid out");
+        ok(state6.restored, "restored");
+        PedalGraph.detach(state6); hidden.remove();
+        window.HUD = null;
     });
 
     t("detach cancels the frame loop and releases listeners; re-attach reuses the markup", function () {

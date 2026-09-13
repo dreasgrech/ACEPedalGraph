@@ -46,6 +46,11 @@ def main(argv):
         print("  " + l[:160])
     if len(pg) > 6:
         print(f"  ... {len(pg) - 6} more [PedalGraph] lines")
+    positions = [l for l in pg if "position " in l]
+    if positions:
+        print("position save/restore:")
+        for l in positions[:8]:
+            print("  " + l.strip()[:160])
 
     if crashes:
         print("CRASH / EXCEPTION lines:")
