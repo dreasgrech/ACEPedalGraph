@@ -5,12 +5,18 @@
     <script src='js/cohtml.js'></script>
     <script type="module" src='js/components.js'></script>
     <!-- PedalGraph mod: extra HUD widget (throttle / brake / clutch / handbrake traces) -->
-    <script>window.PEDALGRAPH_SOURCE = "kspkg";</script>
+    <script>
+        window.PEDALGRAPH_SOURCE = "kspkg";
+        console.log("[PedalGraph] hud.html override active, source=kspkg");
+        window.addEventListener("error", function (e) {
+            console.log("[PedalGraph] script error: " + e.message + " @ " + e.filename + ":" + e.lineno);
+        });
+    </script>
     <script defer src='js/pedalgraph.js'></script>
 
     <link rel='stylesheet' type='text/css' href='css/ui.css'>
     <link rel='stylesheet' type='text/css' href='css/uicomponents.css'>
-    <link rel='stylesheet' type='text/css' href='css/pedalgraph.css'>
+    <link rel='stylesheet' type='text/css' href='assets/pedalgraph.css'>
 </head>
 
 <body class="hud" data-bind-class-toggle="multiplayer:IsFlagSet(InSessionFlags.Multiplayer,{{ModelUISessionState}});disconnected:{{ModelUIState}}.online_status=='UIOnlineDisconnected';is-admin:{{ModelUIState}}.is_admin;is-spectator:{{ModelUIState}}.is_spectator;is-player-car:{{ModelCurrentCar}}.is_player_car">

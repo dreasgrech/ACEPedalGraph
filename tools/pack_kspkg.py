@@ -22,12 +22,23 @@ Table entry (little endian):
 Entries are sorted by hash ascending; the game stops reading at the first entry
 whose hash is 0. The whole table is XOR'd with the 8-byte key 0x9F9721A97D1135C1.
 
+Override resolution: the game appends every package's entries to one vector,
+re-sorts it with an unstable std::sort and takes the first equal hash. Which
+copy of an overridden file wins therefore depends on the package's whole set of
+hashes. lookup_sim.py replays that exactly against the installed content.kspkg,
+and the packer adds dummy directory entries ("padding") until every override
+resolves to this package. Without the game installed it cannot predict and
+warns instead.
+
 Usage:
   python pack_kspkg.py <source_dir> <output.kspkg> [--encrypt] [--install] [--no-verify]
+                       [--no-pad] [--game-dir=<install folder>]
 
   --encrypt    XOR the file blobs as well (official content does; mods need not)
   --install    copy the result to %USERPROFILE%\\Saved Games\\ACE\\mods\\
   --no-verify  skip re-reading the package to check every entry
+  --no-pad     do not compute/add padding (builds a package the game may ignore)
+  --game-dir   where content.kspkg lives (default: Steam path, or ACE_GAME_DIR)
 
 Every file below <source_dir> is stored with its path relative to <source_dir>,
 so <source_dir>/uiresources/hud.html becomes "uiresources\\hud.html" in the package.
@@ -36,6 +47,9 @@ import os
 import shutil
 import struct
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lookup_sim  # noqa: E402  (replays the game's lookup to make overrides win)
 
 KEY = 0x9F9721A97D1135C1
 KEY_BYTES = KEY.to_bytes(8, "little")
@@ -112,12 +126,49 @@ def make_entry(path: str, flags: int, size: int, offset: int) -> bytes:
             + struct.pack("<qq", size, offset))
 
 
-def pack(source_dir: str, out_path: str, encrypt: bool = False) -> list:
+def plan_padding(files, dirs, game_dir=None):
+    """
+    Decide which dummy directory entries to add so that every file that also
+    exists in the game's base package resolves to OUR copy (see lookup_sim).
+    Returns (pad_paths, report_lines). Raises SystemExit if no layout wins.
+    """
+    base_pkg = lookup_sim.find_base_package(game_dir)
+    if not base_pkg:
+        return [], ["WARNING: content.kspkg not found; cannot predict override resolution "
+                    "(set --game-dir=<install folder> or ACE_GAME_DIR)"]
+    base = lookup_sim.read_base_hashes(base_pkg)
+    base_set = set(base)
+    mod_paths = [rel for rel, _ in files] + list(dirs)
+    overrides = [rel for rel, _ in files if path_hash(rel) in base_set]
+    if not overrides:
+        return [], ["no base-package files are overridden; no padding needed"]
+    pad, win = lookup_sim.find_padding(base, mod_paths, overrides, path_hash)
+    lines = [f"base package: {base_pkg} ({len(base)} entries)",
+             f"overrides of base files: {', '.join(overrides)}"]
+    if pad is None:
+        lines.append("NO padding layout found that makes every override win")
+        for rel in overrides:
+            lines.append(f"  {rel}: resolves to {win[path_hash(rel)]}")
+        raise SystemExit("\n".join(lines) + "\nRefusing to build a package the game would ignore. "
+                         "Rename/add a file to change the layout, or pass --no-pad to build anyway.")
+    lines.append(f"padding: {len(pad)} directory entries under {lookup_sim.PAD_PARENT}\\")
+    for rel, _ in files:
+        lines.append(f"  {rel}: resolves to {win[path_hash(rel)]}")
+    return pad, lines
+
+
+def pack(source_dir: str, out_path: str, encrypt: bool = False, pad: bool = True, game_dir=None) -> list:
     files, dirs = collect(source_dir)
     if not files:
         raise SystemExit(f"no files found under {source_dir}")
 
-    entries = [(path_hash(d), make_entry(d, FLAG_DIR, 0, 0)) for d in dirs]
+    pad_paths = []
+    if pad:
+        pad_paths, report = plan_padding(files, dirs, game_dir)
+        for line in report:
+            print("  " + line)
+
+    entries = [(path_hash(d), make_entry(d, FLAG_DIR, 0, 0)) for d in list(dirs) + pad_paths]
     written = []   # (rel, full, offset, size, flags) for verification
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
@@ -156,7 +207,7 @@ def pack(source_dir: str, out_path: str, encrypt: bool = False) -> list:
         out.write(KEY_BYTES * (remaining // 8))
 
     total = offset + pad + TABLE_SIZE
-    print(f"wrote {out_path}: {len(files)} files, {len(dirs)} dirs, {total} bytes")
+    print(f"wrote {out_path}: {len(files)} files, {len(dirs)} dirs, {len(pad_paths)} padding entries, {total} bytes")
     return written
 
 
@@ -234,11 +285,12 @@ if __name__ == "__main__":
     print(f"PedalGraph version {read_version()}")
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    unknown = flags - {"--encrypt", "--install", "--no-verify"}
+    game_dir = next((a.split("=", 1)[1] for a in flags if a.startswith("--game-dir=")), None)
+    unknown = {a for a in flags if not a.startswith("--game-dir=")} - {"--encrypt", "--install", "--no-verify", "--no-pad"}
     if len(args) != 2 or unknown:
         print(__doc__)
         sys.exit(1)
-    written = pack(args[0], args[1], encrypt="--encrypt" in flags)
+    written = pack(args[0], args[1], encrypt="--encrypt" in flags, pad="--no-pad" not in flags, game_dir=game_dir)
     if "--no-verify" not in flags:
         verify(args[1], written)
     if "--install" in flags:

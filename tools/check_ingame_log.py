@@ -54,6 +54,14 @@ def main(argv):
 
     loaded = [l for l in pg if "script loaded" in l]
     sampling = [l for l in pg if "sampling ok" in l]
+    hud_marker = [l for l in pg if "hud.html override active" in l]
+    script_errors = [l for l in pg if "script error:" in l]
+    if hud_marker and not loaded:
+        print("hud.html WAS served from the package but the widget script never logged:")
+        for l in script_errors[:5] or ["  (no script error was reported either)"]:
+            print("  " + l.strip()[:200])
+        print("RESULT: APPLIED, WIDGET SCRIPT FAILED")
+        return 2
     src = re.search(r"source=(\w+)", loaded[0]).group(1) if loaded else None
     ver = re.search(r"version=([\w.\-]+)", loaded[0]) if loaded else None
     if loaded:

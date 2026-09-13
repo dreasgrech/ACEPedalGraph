@@ -15,7 +15,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HUD = os.path.join(ROOT, "src", "uiresources", "hud.html")
 JS = os.path.join(ROOT, "src", "uiresources", "js", "pedalgraph.js")
-CSS = os.path.join(ROOT, "src", "uiresources", "css", "pedalgraph.css")
+CSS = os.path.join(ROOT, "src", "uiresources", "assets", "pedalgraph.css")
 VERSION_FILE = os.path.join(ROOT, "VERSION")
 PREVIEW = os.path.join(ROOT, "dev", "preview.html")
 
@@ -44,7 +44,7 @@ class HudHtmlTests(unittest.TestCase):
 
     def test_stock_scripts_and_styles_present_in_order(self):
         order = ["js/cohtml.js", "js/components.js", "js/pedalgraph.js",
-                 "css/ui.css", "css/uicomponents.css", "css/pedalgraph.css"]
+                 "css/ui.css", "css/uicomponents.css", "assets/pedalgraph.css"]
         positions = [self.html.find(s) for s in order]
         self.assertTrue(all(p >= 0 for p in positions), positions)
         self.assertEqual(positions, sorted(positions), "load order changed")
@@ -56,7 +56,7 @@ class HudHtmlTests(unittest.TestCase):
         self.assertNotIn('type="module" src=\'js/pedalgraph.js\'', self.html)
 
     def test_stylesheet_linked_after_stock_styles(self):
-        self.assertIn("<link rel='stylesheet' type='text/css' href='css/pedalgraph.css'>", self.html)
+        self.assertIn("<link rel='stylesheet' type='text/css' href='assets/pedalgraph.css'>", self.html)
 
     def test_source_tag_set_before_widget_script(self):
         tag = self.html.find('window.PEDALGRAPH_SOURCE = "kspkg"')
@@ -97,7 +97,7 @@ class WidgetSourceTests(unittest.TestCase):
         self.assertNotIn("getContext(", self.js)
 
     def test_no_css_in_script(self):
-        # styling belongs to css/pedalgraph.css; the script only writes transforms
+        # styling belongs to assets/pedalgraph.css; the script only writes transforms
         self.assertNotIn("createElement(\"style\")", self.js)
         self.assertNotIn("background:", self.js)
         self.assertNotIn("#pedalgraph-style", self.js)
@@ -188,7 +188,7 @@ class VersionTests(unittest.TestCase):
 class PreviewTests(unittest.TestCase):
     def test_preview_loads_the_real_sources(self):
         html = read(PREVIEW)
-        self.assertIn('href="../src/uiresources/css/pedalgraph.css"', html)
+        self.assertIn('href="../src/uiresources/assets/pedalgraph.css"', html)
         self.assertIn('src="../src/uiresources/js/pedalgraph.js"', html)
         self.assertIn('id="pedalgraph"', html)
         self.assertIn("--font-family-main", html, "must define the game's font variable")

@@ -101,7 +101,7 @@ class PackTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_structure_matches_format(self):
-        written = pk.pack(self.src, self.out)
+        written = pk.pack(self.src, self.out, pad=False)
         size, table, entries = read_table(self.out)
 
         self.assertEqual(size % pk.BLOB_ALIGN, 0, "package size must be 1 MB aligned")
@@ -153,7 +153,7 @@ class PackTests(unittest.TestCase):
         pk.verify(self.out, written)
 
     def test_encrypt_flag_xors_blobs(self):
-        written = pk.pack(self.src, self.out, encrypt=True)
+        written = pk.pack(self.src, self.out, encrypt=True, pad=False)
         _, _, entries = read_table(self.out)
         files = {e["path"]: e for e in entries if not e["flags"] & pk.FLAG_DIR}
         with open(self.out, "rb") as f:
@@ -174,7 +174,7 @@ class PackTests(unittest.TestCase):
         os.makedirs(os.path.join(self.src, ".git"))
         with open(os.path.join(self.src, ".git", "HEAD"), "wb") as f:
             f.write(b"ref")
-        pk.pack(self.src, self.out)
+        pk.pack(self.src, self.out, pad=False)
         _, _, entries = read_table(self.out)
         paths = {e["path"] for e in entries}
         for p in paths:
@@ -192,10 +192,10 @@ class PackTests(unittest.TestCase):
         empty = os.path.join(self.tmp.name, "empty")
         os.makedirs(empty)
         with self.assertRaises(SystemExit):
-            pk.pack(empty, self.out)
+            pk.pack(empty, self.out, pad=False)
 
     def test_verify_detects_corruption(self):
-        written = pk.pack(self.src, self.out)
+        written = pk.pack(self.src, self.out, pad=False)
         e = [w for w in written if w[0].endswith("hud.html")][0]
         with open(self.out, "r+b") as f:
             f.seek(e[2])
@@ -204,10 +204,10 @@ class PackTests(unittest.TestCase):
             pk.verify(self.out, written)
 
     def test_pack_is_deterministic(self):
-        pk.pack(self.src, self.out)
+        pk.pack(self.src, self.out, pad=False)
         with open(self.out, "rb") as f:
             first = f.read()
-        pk.pack(self.src, self.out)
+        pk.pack(self.src, self.out, pad=False)
         with open(self.out, "rb") as f:
             self.assertEqual(f.read(), first)
 
@@ -224,12 +224,18 @@ class RepoBuildTests(unittest.TestCase):
             files = {e["path"] for e in entries if not e["flags"] & pk.FLAG_DIR}
             self.assertIn("uiresources\\hud.html", files)
             self.assertIn("uiresources\\js\\pedalgraph.js", files)
-            self.assertIn("uiresources\\css\\pedalgraph.css", files)
-            # Observed 2026-09-13: the game only applies the UI override when the
-            # package also carries a copy of an existing file under content\.
-            self.assertTrue(any(p.startswith("content\\cars\\") and p.endswith("\\displays\\display.html")
-                                for p in files),
-                            "package must contain a content\\cars\\<car>\\displays\\display.html override")
+            self.assertIn("uiresources\\assets\\pedalgraph.css", files)
+            # The game resolves duplicates by an unstable sort (see lookup_sim.py). With the
+            # game installed, the packer must have added padding and hud.html must win.
+            import lookup_sim
+            base_pkg = lookup_sim.find_base_package()
+            if base_pkg:
+                pads = [p for p in {e["path"] for e in entries} if p.startswith("uiresources\\pad")]
+                self.assertTrue(pads, "packer did not add padding entries")
+                base = lookup_sim.read_base_hashes(base_pkg)
+                w = lookup_sim.winners(base, [e["hash"] for e in entries])
+                self.assertEqual(w[pk.path_hash("uiresources\\hud.html")], "mod",
+                                 "hud.html override would lose to the base package")
 
 
 @unittest.skipUnless(os.environ.get("ACE_SDK_SAMPLE"), "set ACE_SDK_SAMPLE=1 to check against the SDK sample package")

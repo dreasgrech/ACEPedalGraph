@@ -5,7 +5,7 @@
  * the stock HUD page (hud.html) by a mod package. It knows nothing of the stock
  * ks-* component framework; it only reads the global model object the game
  * refreshes every frame and draws into one plain <div>. Styling lives in
- * css/pedalgraph.css; this file writes no colours or sizes, only transforms.
+ * assets/pedalgraph.css; this file writes no colours or sizes, only transforms.
  *
  * Data source: `window.ModelCurrentCar` (UICurrentCarState, mirrored into the
  * Gameface UI by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
@@ -36,7 +36,7 @@
 const PedalGraph = (function () {
 
     /** Mod version -- keep in step with the VERSION file at the repo root. */
-    const VERSION = "0.2.0";
+    const VERSION = "0.2.1";
 
     /** Prefix of every log line; the game log and the tests grep for it. */
     const LOG_PREFIX = "[PedalGraph]";
@@ -70,7 +70,7 @@ const PedalGraph = (function () {
     /** The stock HUD toggles this class on <body> when the HUD is hidden. */
     const HUD_HIDDEN_CLASS = "hide-hud";
 
-    /** Class names shared with css/pedalgraph.css. */
+    /** Class names shared with assets/pedalgraph.css. */
     const CLASS = {
         root: "ace-pedalgraph",
         dragging: "dragging",

@@ -1,7 +1,7 @@
 # ACE PedalGraph
 
 HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle,
-brake, clutch and handbrake input. Version 0.2.0, working as of 2026-09-13 on
+brake, clutch and handbrake input. Version 0.2.1, working as of 2026-09-14 on
 game version 0.9.1+release.6.
 
 ## Layout
@@ -16,17 +16,18 @@ game version 0.9.1+release.6.
   Draggable, remembers its position (as a fraction of the screen) in
   `localStorage`, hides with the HUD. Writes no colours or sizes, only
   transforms; every class name, timing and precision is a named constant.
-- `src/uiresources/css/pedalgraph.css` - all styling, including the trace
-  colours keyed by `data-trace` index.
+- `src/uiresources/assets/pedalgraph.css` - all styling, including the trace
+  colours keyed by `data-trace` index. (It sits under `assets/` from an
+  earlier layout experiment; the name is not significant now that the packer
+  computes padding, see "What makes the package apply".)
 - `VERSION` - the mod version, single source of truth (see Versioning).
 - `dev/preview.html` - runs the widget outside the game (see below).
-- `src/content/cars/ks_toyota_supra_mkiv/displays/display.html` - copy of a
-  stock car display with one logging line. It does NOT take effect in game;
-  it is there because the package is only applied when it contains an
-  override of an existing `content\` file (see "What makes the package
-  apply" below). A test guards its presence.
-- `tools/pack_kspkg.py` - packs `src/` into a `.kspkg`, verifies the result,
-  optionally installs it (format notes inside).
+- `tools/pack_kspkg.py` - packs `src/` into a `.kspkg`, adds the padding
+  entries that make the overrides win (see "What makes the package apply"),
+  verifies the result, optionally installs it (format notes inside).
+- `tools/lookup_sim.py` - exact replay of the game's package lookup (MSVC
+  introsort + lower_bound over the merged table), used by the packer to
+  predict which copy of an overridden file the game will serve.
 - `tools/check_ingame_log.py` - in-game smoke test: reads the newest game log
   and reports whether the mod was applied and whether anything crashed.
 - `tests/` - regression suite, see below.
@@ -62,14 +63,16 @@ rendering still needs one in-game run, checked with `tools/check_ingame_log.py`.
 
 `VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
 it in `const VERSION`, logs it in its first line (`script loaded,
-version=0.2.0, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
+version=0.2.1, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
 fails if the two disagree or if this README stops mentioning the current
 version, so bumping means: edit `VERSION`, edit the constant, mention it here,
 rebuild. `tools/check_ingame_log.py` prints the version the game actually ran.
 
 History: 0.1.0 proof of concept (custom element, module script);
 0.2.0 IIFE module in project style, external stylesheet, named constants,
-version stamp, preview page, test suite.
+version stamp, preview page, test suite; 0.2.1 the game's override
+resolution reverse-engineered and replayed by the packer (padding), so the
+package no longer depends on luck.
 
 ## Code style (JavaScript)
 
@@ -97,7 +100,10 @@ python -m unittest discover -s tests -v
   alignment, sorted table with zero terminator, XOR padding pattern,
   directory entries, back-to-back blobs, `--encrypt`, junk-file filtering,
   error paths, determinism, corruption detection, and a build of the real
-  `src/` that must contain the `content\` ingredient.
+  `src/` whose `hud.html` override must be predicted to win.
+- `tests/test_lookup_sim.py` - the replay of the game's lookup: the sort
+  replica sorts correctly, and (with the game installed) the model reproduces
+  every observed launch and finds a winning padding for the current sources.
   Set `ACE_SDK_SAMPLE=1` to also parse Kunos' 531 MB sample package from
   `C:\AssettoEvoSDKDocumentation` with our rules.
 - `tests/test_sources.py` - static rules on the shipped files: hud.html keeps
@@ -145,18 +151,35 @@ Tested on 2026-09-13, always the Supra on the same server:
 | uiresources only | yes | not applied |
 | uiresources + `content\cars\<car>\displays\display.html` override | no | **applied** |
 
-Conclusions so far:
+Four more launches on 2026-09-13/14 with other layouts all failed, including
+one with the same `hud.html` table index as the working build and one where
+the Supra was driven with a package containing a Supra file. Every layout
+theory built on those bits fell over, so the exe was read instead
+(`tools/lookup_sim.py` documents the result):
 
-- A `.kspkg` in `Saved Games\ACE\mods\` can override `uiresources\hud.html`.
-- Loose files, whether under `mods\` or in the game install folder, are never
-  read while `content.kspkg` is present.
-- The override only takes effect when the package also contains a copy of an
-  existing file under `content\`. The copy itself is NOT served (its logging
-  line never appears). The mechanism is unknown; the working theory is that
-  the game merges all package tables into one hash-sorted list and
-  binary-searches it, so which duplicate wins depends on the overall layout.
-  Treat the extra file as a required ingredient and re-test after every game
-  update.
+- The mod scanner adds `content.kspkg`, then every `mods\*.kspkg`, through the
+  same routine. All packages are always mounted.
+- That routine appends each table entry as a `{hash, flags, size, offset,
+  package index}` record to **one shared vector**, then re-sorts the vector
+  with `std::sort` (MSVC introsort, **unstable**).
+- A file read does `std::lower_bound` on that vector by path hash and takes the
+  **first** record with an equal hash. Only if nothing matches are loose-file
+  search directories tried (so loose files can never override a packed file).
+
+Consequence: when a mod overrides a file that exists in the base package, both
+records end up adjacent and which one is first depends on where the
+introsort's swaps left them, which depends on the entire set of hashes in the
+mod package. `lookup_sim.py` replays MSVC's algorithm exactly; it reproduces
+all seven observed launches, including the fact that the Supra display copy in
+the working build was itself never served. Only 5 of 40 candidate layouts of
+the current sources would have worked, which is why hand-made layouts kept
+failing.
+
+The packer therefore reads the installed `content.kspkg`, predicts the winner
+of every override, and adds dummy directory entries under `uiresources\pad\`
+until every override resolves to this package. It refuses to build a package
+the game would ignore. Padding depends on the installed game version, so
+rebuild after every game update; `check_ingame_log.py` is the final check.
 - Steam launch options never reach the exe (every log says `Arguments: 1`),
   and a direct launch is refused by the ownership check even with a
   `steam_appid.txt`, so `-log_debug` / `-log_trace` cannot be used.
