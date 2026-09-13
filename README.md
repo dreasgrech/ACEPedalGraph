@@ -7,8 +7,9 @@ brake, clutch and handbrake input. Working as of 2026-09-13 on game version
 ## Layout
 
 - `src/uiresources/hud.html` - copy of the stock HUD page with one extra
-  `<script>` tag, a source tag, and one `<ace-pedalgraph>` element.
-- `src/uiresources/js/pedalgraph.js` - the widget. Reads the global
+  deferred `<script>` tag, a source tag, and one `<div id="pedalgraph">`.
+- `src/uiresources/js/pedalgraph.js` - the widget, an IIFE module
+  (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
   Draggable, remembers its position (as a fraction of the screen) in
@@ -33,6 +34,22 @@ python tools/pack_kspkg.py src dist/pedalgraph.kspkg --install
 
 `--install` copies the package to `%USERPROFILE%\Saved Games\ACE\mods\`.
 Delete it from there to restore the stock HUD.
+
+## Code style (JavaScript)
+
+Same conventions as the uplinkjs scripts, enforced by `tests/test_sources.py`:
+
+- one IIFE module per file: `const PedalGraph = (function () { ... return {...}; }());`
+- no classes and no `this`; per-instance state is a plain object passed as
+  the first argument (`attach(root)` returns it, `detach(state)` takes it)
+- functions are assigned expressions: `const name = function (args) { ... };`,
+  no function declarations, no arrow functions
+- `let` / `const` only, double quotes, four-space indentation, braces on every
+  `if` with a blank line after a one-line block, `catch (ignore) { /* why */ }`
+- JSDoc comments on the module and on anything non-obvious
+
+The custom element of the first prototype is gone for this reason: Custom
+Elements need a class, so the widget attaches to a plain `<div>` instead.
 
 ## Tests
 

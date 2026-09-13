@@ -1,329 +1,434 @@
-// PedalGraph - Assetto Corsa EVO HUD widget
-// Scrolling time graph of throttle, brake, clutch and handbrake input.
-//
-// Data source: window.ModelCurrentCar (UICurrentCarState mirrored into the Gameface UI
-// every frame by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
-//   gas_percent, brake_percent, clutch_percent, handbrake_percent
-//
-// Rendering notes (important for Cohtml/Renoir):
-//   The first prototype redrew four SVG paths every frame. Renoir re-tessellates SVG
-//   geometry on every change and the game's allocator ran out of chunks within seconds
-//   ("Unable to allocate chunk from buddy allocator"), crashing the game.
-//   This version only ever changes CSS transforms on a fixed set of elements, which is
-//   the same technique the stock HUD uses for its gauges. No geometry is rebuilt.
-//
-//   Each trace is a strip of 2*N thin bars (two identical halves). A new sample writes
-//   one bar in each half and slides the strip left by one bar, so the newest sample is
-//   always at the right edge and the wrap-around is invisible.
-//
-//   Smoothness: samples are committed to the history at a fixed SAMPLE_HZ, but every
-//   rendered frame (a) slides the strip by the fractional time since the last sample,
-//   so the scroll is continuous at any frame rate, and (b) writes the live pedal value
-//   into the incoming bar at the right edge, so the newest value never lags a sample.
-//   Style writes whose value did not change are skipped.
-
+/**
+ * PedalGraph -- Assetto Corsa EVO HUD widget.
+ *
+ * A scrolling time graph of throttle, brake, clutch and handbrake input, added to
+ * the stock HUD page (hud.html) by a mod package. It knows nothing of the stock
+ * ks-* component framework; it only reads the global model object the game
+ * refreshes every frame and draws into one plain <div>.
+ *
+ * Data source: `window.ModelCurrentCar` (UICurrentCarState, mirrored into the
+ * Gameface UI by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
+ *
+ *     gas_percent, brake_percent, clutch_percent, handbrake_percent
+ *
+ * Rendering rules (Cohtml/Renoir):
+ *
+ * The first prototype redrew four SVG paths every frame. Renoir re-tessellates
+ * SVG geometry on every change and the game's allocator ran out of chunks within
+ * seconds ("Unable to allocate chunk from buddy allocator"), crashing the game.
+ * This version only ever changes CSS transforms on a fixed set of elements, the
+ * same technique the stock HUD uses for its gauges. No geometry is rebuilt.
+ *
+ * Each trace is a strip of 2*N thin bars (two identical halves). A committed
+ * sample writes one bar in each half and the strip slides left by one bar, so
+ * the newest sample is always at the right edge and the wrap-around is
+ * invisible. Samples are committed at a fixed SAMPLE_HZ, but every rendered frame
+ * (a) slides the strip by the fractional time since the last sample, so the
+ * scroll is continuous at any frame rate, and (b) writes the live pedal value
+ * into the incoming bar at the right edge, so the newest value never lags a
+ * sample. Style writes whose value did not change are skipped.
+ *
+ * Usage: `PedalGraph.attach(rootElement)` returns the widget's state;
+ * `PedalGraph.detach(state)` stops it and releases its listeners. The boot block
+ * at the bottom attaches to `#pedalgraph` when hud.html has one.
+ */
 console.log("[PedalGraph] script loaded, source=" + (window.PEDALGRAPH_SOURCE || "unknown") + ", url=" + location.href);
 
-const SAMPLE_HZ = 50;              // history resolution, independent of frame rate
-const WINDOW_S = 5;                // visible history in seconds
-const N = SAMPLE_HZ * WINDOW_S;    // bars per trace (250)
-const SAMPLE_MS = 1000 / SAMPLE_HZ;
-const WINDOW_MS = WINDOW_S * 1000;
-const LOG_EVERY_MS = 60000;
-const STORAGE_KEY = "acepedalgraph.pos";
+const PedalGraph = (function () {
 
-const TRACES = [
-    { key: "clutch_percent",    label: "CLU", color: "#3aa6ff" },
-    { key: "handbrake_percent", label: "HBK", color: "#ffb020" },
-    { key: "brake_percent",     label: "BRK", color: "#ff1418" },
-    { key: "gas_percent",       label: "THR", color: "#44ea78" },
-];
+    /** History resolution, independent of frame rate. */
+    const SAMPLE_HZ = 50;
+    /** Visible history in seconds. */
+    const WINDOW_S = 5;
+    /** Bars per trace (250). */
+    const N = SAMPLE_HZ * WINDOW_S;
+    const SAMPLE_MS = 1000 / SAMPLE_HZ;
+    const WINDOW_MS = WINDOW_S * 1000;
+    const LOG_EVERY_MS = 60000;
+    const STORAGE_KEY = "acepedalgraph.pos";
+    const STYLE_ID = "pedalgraph-style";
+    const ROOT_CLASS = "ace-pedalgraph";
 
-const CSS = [
-    "ace-pedalgraph {",
-    "  position: absolute; left: 2rem; bottom: 12rem; width: 22rem; display: block;",
-    "  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 0.25rem;",
-    "  padding: 0.35rem 0.5rem 0.4rem 0.5rem; color: #fff; cursor: pointer;",
-    "}",
-    "ace-pedalgraph.dragging { border-color: #bd0000; }",
-    "body.hide-hud ace-pedalgraph { visibility: hidden; }",
-    "ace-pedalgraph .pg-header { display: flex; flex-direction: row; justify-content: space-between; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.2rem; }",
-    "ace-pedalgraph .pg-legend { display: flex; flex-direction: row; }",
-    "ace-pedalgraph .pg-item { display: flex; flex-direction: row; align-items: center; margin-left: 0.6rem; }",
-    "ace-pedalgraph .pg-item:first-child { margin-left: 0; }",
-    "ace-pedalgraph .pg-swatch { width: 0.5rem; height: 0.5rem; border-radius: 0.1rem; margin-right: 0.25rem; }",
-    "ace-pedalgraph .pg-val { min-width: 2.2rem; text-align: right; }",
-    "ace-pedalgraph .pg-nodata { font-size: 0.65rem; opacity: 0.6; }",
-    "ace-pedalgraph .pg-plot { display: flex; flex-direction: row; align-items: stretch; height: 6rem; }",
-    "ace-pedalgraph .pg-graph { position: relative; overflow: hidden; flex: 1 1 auto; height: 100%; background: rgba(255,255,255,0.04); }",
-    "ace-pedalgraph .pg-grid { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.10); }",
-    "ace-pedalgraph .pg-track { position: absolute; top: 0; left: 0; height: 100%; width: 200%; }",
-    "ace-pedalgraph .pg-bar { position: absolute; top: 0; height: 100%; transform-origin: 50% 100%; transform: scaleY(0); opacity: 0.75; }",
-    "ace-pedalgraph .pg-bars { display: flex; flex-direction: row; margin-left: 0.4rem; height: 100%; }",
-    "ace-pedalgraph .pg-lvl { position: relative; width: 0.45rem; margin-left: 0.2rem; background: rgba(255,255,255,0.08); overflow: hidden; }",
-    "ace-pedalgraph .pg-lvl > div { position: absolute; left: 0; right: 0; top: 0; bottom: 0; transform-origin: 50% 100%; transform: scaleY(0); }",
-].join("\n");
+    /** Draw order: later traces paint over earlier ones. */
+    const TRACES = [
+        { key: "clutch_percent", label: "CLU", color: "#3aa6ff" },
+        { key: "handbrake_percent", label: "HBK", color: "#ffb020" },
+        { key: "brake_percent", label: "BRK", color: "#ff1418" },
+        { key: "gas_percent", label: "THR", color: "#44ea78" }
+    ];
 
-function clamp(x, lo, hi) {
-    return x < lo ? lo : (x > hi ? hi : x);
-}
+    /** Index into TRACES, for the log line. */
+    const CLUTCH = 0;
+    const HANDBRAKE = 1;
+    const BRAKE = 2;
+    const GAS = 3;
 
-class PedalGraph extends HTMLElement {
+    const CSS = [
+        "." + ROOT_CLASS + " {",
+        "  position: absolute; left: 2rem; bottom: 12rem; width: 22rem; display: block;",
+        "  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 0.25rem;",
+        "  padding: 0.35rem 0.5rem 0.4rem 0.5rem; color: #fff; cursor: pointer;",
+        "}",
+        "." + ROOT_CLASS + ".dragging { border-color: #bd0000; }",
+        "body.hide-hud ." + ROOT_CLASS + " { visibility: hidden; }",
+        "." + ROOT_CLASS + " .pg-header { display: flex; flex-direction: row; justify-content: space-between; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.2rem; }",
+        "." + ROOT_CLASS + " .pg-legend { display: flex; flex-direction: row; }",
+        "." + ROOT_CLASS + " .pg-item { display: flex; flex-direction: row; align-items: center; margin-left: 0.6rem; }",
+        "." + ROOT_CLASS + " .pg-item:first-child { margin-left: 0; }",
+        "." + ROOT_CLASS + " .pg-swatch { width: 0.5rem; height: 0.5rem; border-radius: 0.1rem; margin-right: 0.25rem; }",
+        "." + ROOT_CLASS + " .pg-val { min-width: 2.2rem; text-align: right; }",
+        "." + ROOT_CLASS + " .pg-nodata { font-size: 0.65rem; opacity: 0.6; }",
+        "." + ROOT_CLASS + " .pg-plot { display: flex; flex-direction: row; align-items: stretch; height: 6rem; }",
+        "." + ROOT_CLASS + " .pg-graph { position: relative; overflow: hidden; flex: 1 1 auto; height: 100%; background: rgba(255,255,255,0.04); }",
+        "." + ROOT_CLASS + " .pg-grid { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.10); }",
+        "." + ROOT_CLASS + " .pg-track { position: absolute; top: 0; left: 0; height: 100%; width: 200%; }",
+        "." + ROOT_CLASS + " .pg-bar { position: absolute; top: 0; height: 100%; transform-origin: 50% 100%; transform: scaleY(0); opacity: 0.75; }",
+        "." + ROOT_CLASS + " .pg-bars { display: flex; flex-direction: row; margin-left: 0.4rem; height: 100%; }",
+        "." + ROOT_CLASS + " .pg-lvl { position: relative; width: 0.45rem; margin-left: 0.2rem; background: rgba(255,255,255,0.08); overflow: hidden; }",
+        "." + ROOT_CLASS + " .pg-lvl > div { position: absolute; left: 0; right: 0; top: 0; bottom: 0; transform-origin: 50% 100%; transform: scaleY(0); }"
+    ].join("\n");
 
-    constructor() {
-        super();
-        this.built = false;
-        this.tracks = [];          // per trace: { el, bars: [2N elements] }
-        this.levels = [];          // per trace: level bar element
-        this.vals = [];            // per trace: numeric readout element
-        this.noData = null;
-        this.head = 0;             // index of the last committed sample
-        this.lastSampleAt = 0;     // timestamp of the last committed sample
-        this.rafId = 0;
-        this.lastLog = 0;
-        this.lastPct = [];
-        this.lastScale = [];       // last scaleY string written per trace (live bar + level)
-        this.dragging = false;
-        this.dragOffset = { x: 0, y: 0 };
-        this.tick = this.tick.bind(this);
-        this.onMouseDown = this.onMouseDown.bind(this);
-        this.onMouseMove = this.onMouseMove.bind(this);
-        this.onMouseUp = this.onMouseUp.bind(this);
-    }
+    const clamp = function (x, lo, hi) {
+        if (x < lo) { return lo; }
 
-    // ---- lifecycle ----------------------------------------------------------------
+        if (x > hi) { return hi; }
 
-    connectedCallback() {
-        if (!this.built) {
-            this.build();
-            this.built = true;
-        }
-        this.addEventListener("mousedown", this.onMouseDown);
-        window.addEventListener("mousemove", this.onMouseMove);
-        window.addEventListener("mouseup", this.onMouseUp);
+        return x;
+    };
 
-        this.restorePosition();
+    /** The stylesheet is shared by every widget on the page; inject it once. */
+    const injectStyle = function () {
+        if (document.getElementById(STYLE_ID)) { return; }
 
-        if (!this.rafId) {
-            this.lastSampleAt = 0;
-            this.rafId = requestAnimationFrame(this.tick);
-        }
-        console.log("[PedalGraph] widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
-    }
+        const style = document.createElement("style");
 
-    disconnectedCallback() {
-        cancelAnimationFrame(this.rafId);
-        this.rafId = 0;
-        this.removeEventListener("mousedown", this.onMouseDown);
-        window.removeEventListener("mousemove", this.onMouseMove);
-        window.removeEventListener("mouseup", this.onMouseUp);
-        this.dragging = false;
-    }
+        style.id = STYLE_ID;
+        style.textContent = CSS;
+        document.head.appendChild(style);
+    };
 
-    build() {
-        if (!document.getElementById("pedalgraph-style")) {
-            const style = document.createElement("style");
-            style.id = "pedalgraph-style";
-            style.textContent = CSS;
-            document.head.appendChild(style);
-        }
-
-        const barW = 100 / (2 * N);   // percent of the (200% wide) track
+    /** The widget's markup: legend, one 2N-bar strip per trace, level bars. */
+    const markup = function () {
+        const barW = 100 / (2 * N);
         const barWStr = (barW + 0.02).toFixed(4);
         let legend = "";
         let tracks = "";
         let levels = "";
-        for (let t = 0; t < TRACES.length; t++) {
-            const tr = TRACES[t];
-            legend += '<div class="pg-item"><div class="pg-swatch" style="background:' + tr.color + '"></div>' + tr.label + '<div class="pg-val">0%</div></div>';
+
+        TRACES.forEach(function (trace, index) {
             const bars = [];
-            for (let j = 0; j < 2 * N; j++) {
-                bars.push('<div class="pg-bar" style="left:' + (j * barW).toFixed(4) + '%;width:' + barWStr + '%;background:' + tr.color + '"></div>');
+            let j;
+
+            legend += "<div class=\"pg-item\"><div class=\"pg-swatch\" style=\"background:" + trace.color + "\"></div>"
+                + trace.label + "<div class=\"pg-val\">0%</div></div>";
+
+            for (j = 0; j < 2 * N; j += 1) {
+                bars.push("<div class=\"pg-bar\" style=\"left:" + (j * barW).toFixed(4) + "%;width:" + barWStr
+                    + "%;background:" + trace.color + "\"></div>");
             }
-            tracks += '<div class="pg-track" data-trace="' + t + '">' + bars.join("") + '</div>';
-            levels += '<div class="pg-lvl"><div style="background:' + tr.color + '"></div></div>';
-        }
 
-        this.innerHTML =
-            '<div class="pg-header">' +
-                '<div class="pg-legend">' + legend + '</div>' +
-                '<div class="pg-nodata">waiting for car data</div>' +
-            '</div>' +
-            '<div class="pg-plot">' +
-                '<div class="pg-graph">' +
-                    '<div class="pg-grid" style="top:25%"></div>' +
-                    '<div class="pg-grid" style="top:50%"></div>' +
-                    '<div class="pg-grid" style="top:75%"></div>' +
-                    tracks +
-                '</div>' +
-                '<div class="pg-bars">' + levels + '</div>' +
-            '</div>';
+            tracks += "<div class=\"pg-track\" data-trace=\"" + index + "\">" + bars.join("") + "</div>";
+            levels += "<div class=\"pg-lvl\"><div style=\"background:" + trace.color + "\"></div></div>";
+        });
 
-        this.tracks = Array.from(this.querySelectorAll(".pg-track")).map(el => ({
-            el: el,
-            bars: Array.from(el.querySelectorAll(".pg-bar"))
-        }));
-        this.levels = Array.from(this.querySelectorAll(".pg-lvl > div"));
-        this.vals = Array.from(this.querySelectorAll(".pg-val"));
-        this.noData = this.querySelector(".pg-nodata");
-        this.lastPct = TRACES.map(() => -1);
-        this.lastScale = TRACES.map(() => "");
-    }
+        return "<div class=\"pg-header\">"
+            + "<div class=\"pg-legend\">" + legend + "</div>"
+            + "<div class=\"pg-nodata\">waiting for car data</div>"
+            + "</div>"
+            + "<div class=\"pg-plot\">"
+            + "<div class=\"pg-graph\">"
+            + "<div class=\"pg-grid\" style=\"top:25%\"></div>"
+            + "<div class=\"pg-grid\" style=\"top:50%\"></div>"
+            + "<div class=\"pg-grid\" style=\"top:75%\"></div>"
+            + tracks
+            + "</div>"
+            + "<div class=\"pg-bars\">" + levels + "</div>"
+            + "</div>";
+    };
 
-    // ---- data -----------------------------------------------------------------------
+    /**
+     * Build (or, on a root that already carries the markup, re-use) the DOM and
+     * return the widget's state. Everything the loop touches is looked up once.
+     */
+    const create = function (root) {
+        injectStyle();
+        root.classList.add(ROOT_CLASS);
 
-    readModel() {
-        const car = window["ModelCurrentCar"];
-        if (!car || car.has_focused_car === false) return null;
-        const v = [];
-        for (let t = 0; t < TRACES.length; t++) {
-            const x = car[TRACES[t].key];
-            v.push(typeof x === "number" ? clamp(x, 0, 1) : 0);
-        }
-        return v;
-    }
+        if (!root.querySelector(".pg-plot")) { root.innerHTML = markup(); }
 
-    tick(now) {
-        this.rafId = requestAnimationFrame(this.tick);
+        const tracks = Array.prototype.map.call(root.querySelectorAll(".pg-track"), function (el) {
+            return { el: el, bars: Array.prototype.slice.call(el.querySelectorAll(".pg-bar")) };
+        });
 
-        const v = this.readModel();
-        if (!v) {
-            this.lastSampleAt = 0;
-            if (now - this.lastLog > LOG_EVERY_MS) {
-                this.lastLog = now;
-                console.log("[PedalGraph] ModelCurrentCar not available yet");
-            }
-            return;
-        }
+        return {
+            root: root,
+            tracks: tracks,
+            levels: Array.prototype.slice.call(root.querySelectorAll(".pg-lvl > div")),
+            vals: Array.prototype.slice.call(root.querySelectorAll(".pg-val")),
+            noData: root.querySelector(".pg-nodata"),
+            head: 0,                    // index of the last committed sample
+            lastIncoming: -1,           // slot that last received the live value
+            lastSampleAt: 0,            // timestamp of the last committed sample
+            rafId: 0,
+            lastLog: 0,
+            lastPct: TRACES.map(function () { return -1; }),
+            lastScale: TRACES.map(function () { return ""; }),
+            dragging: false,
+            dragOffset: { x: 0, y: 0 },
+            handlers: null
+        };
+    };
 
-        // first sample, or a stall longer than the whole window: restart the clock
-        // instead of replaying hundreds of identical samples
-        if (this.lastSampleAt === 0 || now - this.lastSampleAt > WINDOW_MS) {
-            this.lastSampleAt = now;
-        }
+    // ---- data ------------------------------------------------------------------
 
-        // commit history at the fixed rate (catches up after short hitches)
-        while (now - this.lastSampleAt >= SAMPLE_MS) {
-            this.lastSampleAt += SAMPLE_MS;
-            this.commitSample(v);
-        }
+    /** The four pedal values, clamped, or null when there is no focused car. */
+    const readModel = function () {
+        const car = window.ModelCurrentCar;
 
-        // nothing to draw while the HUD is toggled off; history keeps recording
-        if (document.body.classList.contains("hide-hud")) return;
+        if (!car || car.has_focused_car === false) { return null; }
 
-        const frac = clamp((now - this.lastSampleAt) / SAMPLE_MS, 0, 1);
-        this.renderFrame(v, frac);
+        return TRACES.map(function (trace) {
+            const x = car[trace.key];
 
-        if (this.noData.textContent) this.noData.textContent = "";
-        if (now - this.lastLog > LOG_EVERY_MS) {
-            this.lastLog = now;
-            console.log("[PedalGraph] sampling ok thr=" + v[3].toFixed(2) + " brk=" + v[2].toFixed(2) +
-                " clu=" + v[0].toFixed(2) + " hbk=" + v[1].toFixed(2));
-        }
-    }
+            return typeof x === "number" ? clamp(x, 0, 1) : 0;
+        });
+    };
 
-    // Write a sample into the next history slot. Visible bars are head+1 .. head+N
-    // (second half of the strip), newest at the right edge.
-    commitSample(v) {
-        const idx = (this.head + 1) % N;
-        for (let t = 0; t < TRACES.length; t++) {
+    /**
+     * Write a sample into the next history slot. Visible bars are head+1 .. head+N
+     * (second half of the strip), newest at the right edge.
+     */
+    const commitSample = function (state, v) {
+        const idx = (state.head + 1) % N;
+
+        TRACES.forEach(function (trace, t) {
             const scale = "scaleY(" + v[t].toFixed(3) + ")";
-            const bars = this.tracks[t].bars;
+            const bars = state.tracks[t].bars;
+
             bars[idx].style.transform = scale;
             bars[idx + N].style.transform = scale;
-        }
-        this.head = idx;
-    }
+        });
 
-    // Called every frame. `frac` (0..1) is how far we are towards the next sample.
-    renderFrame(v, frac) {
-        const head = this.head;
+        state.head = idx;
+    };
+
+    /** Called every frame; `frac` (0..1) is how far we are towards the next sample. */
+    const renderFrame = function (state, v, frac) {
+        const head = state.head;
         const incoming = (head + 1) % N;
         // strip is 200% wide; bar `head` at the right edge is shift = -(head+1)/(2N).
         // Advancing by `frac` of a bar slides the incoming bar into view continuously.
         const shift = -((head + 1 + frac) / (2 * N)) * 100;
         const shiftStr = "translateX(" + shift.toFixed(4) + "%)";
-        for (let t = 0; t < TRACES.length; t++) {
-            const trk = this.tracks[t];
-            trk.el.style.transform = shiftStr;
+        const slotAdvanced = incoming !== state.lastIncoming;
 
+        TRACES.forEach(function (trace, t) {
+            const track = state.tracks[t];
             const scale = "scaleY(" + v[t].toFixed(3) + ")";
-            if (scale !== this.lastScale[t]) {
-                this.lastScale[t] = scale;
-                trk.bars[incoming].style.transform = scale;
-                trk.bars[incoming + N].style.transform = scale;
-                this.levels[t].style.transform = scale;
-            } else if (incoming !== this.lastIncoming) {
-                // value unchanged but the incoming slot advanced: it still needs the live value
-                trk.bars[incoming].style.transform = scale;
-                trk.bars[incoming + N].style.transform = scale;
-            }
-
             const pct = Math.round(v[t] * 100);
-            if (pct !== this.lastPct[t]) {
-                this.lastPct[t] = pct;
-                this.vals[t].textContent = pct + "%";
+
+            track.el.style.transform = shiftStr;
+
+            if (scale !== state.lastScale[t]) {
+                state.lastScale[t] = scale;
+                track.bars[incoming].style.transform = scale;
+                track.bars[incoming + N].style.transform = scale;
+                state.levels[t].style.transform = scale;
+            } else if (slotAdvanced) {
+                // value unchanged but the incoming slot moved on: it still needs the live value
+                track.bars[incoming].style.transform = scale;
+                track.bars[incoming + N].style.transform = scale;
             }
+
+            if (pct !== state.lastPct[t]) {
+                state.lastPct[t] = pct;
+                state.vals[t].textContent = pct + "%";
+            }
+        });
+
+        state.lastIncoming = incoming;
+    };
+
+    /** One animation frame: commit due samples, then draw. Reschedules itself. */
+    const tick = function (state, now) {
+        state.rafId = requestAnimationFrame(function (next) { tick(state, next); });
+
+        const v = readModel();
+
+        if (!v) {
+            state.lastSampleAt = 0;
+
+            if (now - state.lastLog > LOG_EVERY_MS) {
+                state.lastLog = now;
+                console.log("[PedalGraph] ModelCurrentCar not available yet");
+            }
+
+            return;
         }
-        this.lastIncoming = incoming;
-    }
 
-    // ---- drag / position ------------------------------------------------------------
+        // first sample, or a stall longer than the whole window: restart the clock
+        // instead of replaying hundreds of identical samples
+        if (state.lastSampleAt === 0 || now - state.lastSampleAt > WINDOW_MS) {
+            state.lastSampleAt = now;
+        }
 
-    onMouseDown(e) {
-        this.dragging = true;
-        const r = this.getBoundingClientRect();
-        this.dragOffset.x = e.clientX - r.left;
-        this.dragOffset.y = e.clientY - r.top;
-        this.classList.add("dragging");
-    }
+        // commit history at the fixed rate (catches up after short hitches)
+        while (now - state.lastSampleAt >= SAMPLE_MS) {
+            state.lastSampleAt += SAMPLE_MS;
+            commitSample(state, v);
+        }
 
-    onMouseMove(e) {
-        if (!this.dragging) return;
-        this.moveTo(e.clientX - this.dragOffset.x, e.clientY - this.dragOffset.y);
-    }
+        // nothing to draw while the HUD is toggled off; history keeps recording
+        if (document.body.classList.contains("hide-hud")) { return; }
 
-    onMouseUp() {
-        if (!this.dragging) return;
-        this.dragging = false;
-        this.classList.remove("dragging");
-        this.savePosition();
-    }
+        renderFrame(state, v, clamp((now - state.lastSampleAt) / SAMPLE_MS, 0, 1));
 
-    // Place the widget at viewport coordinates, clamped so it stays fully on screen.
-    moveTo(clientX, clientY) {
-        const parent = this.parentElement.getBoundingClientRect();
-        const w = this.offsetWidth, h = this.offsetHeight;
-        const x = clamp(clientX - parent.left, 0, Math.max(0, parent.width - w));
-        const y = clamp(clientY - parent.top, 0, Math.max(0, parent.height - h));
-        this.style.left = Math.round(x) + "px";
-        this.style.top = Math.round(y) + "px";
-        this.style.bottom = "auto";
-    }
+        if (state.noData.textContent) { state.noData.textContent = ""; }
 
-    // Stored as fractions of the parent so the position survives resolution changes.
-    savePosition() {
+        if (now - state.lastLog > LOG_EVERY_MS) {
+            state.lastLog = now;
+            console.log("[PedalGraph] sampling ok thr=" + v[GAS].toFixed(2) + " brk=" + v[BRAKE].toFixed(2)
+                + " clu=" + v[CLUTCH].toFixed(2) + " hbk=" + v[HANDBRAKE].toFixed(2));
+        }
+    };
+
+    // ---- drag / position -------------------------------------------------------
+
+    /** Place the widget at viewport coordinates, clamped so it stays fully on screen. */
+    const moveTo = function (state, clientX, clientY) {
+        const root = state.root;
+        const parent = root.parentElement.getBoundingClientRect();
+        const x = clamp(clientX - parent.left, 0, Math.max(0, parent.width - root.offsetWidth));
+        const y = clamp(clientY - parent.top, 0, Math.max(0, parent.height - root.offsetHeight));
+
+        root.style.left = Math.round(x) + "px";
+        root.style.top = Math.round(y) + "px";
+        root.style.bottom = "auto";
+    };
+
+    /** Stored as fractions of the parent so the position survives resolution changes. */
+    const savePosition = function (state) {
         try {
-            const parent = this.parentElement.getBoundingClientRect();
-            const r = this.getBoundingClientRect();
-            const pos = {
+            const parent = state.root.parentElement.getBoundingClientRect();
+            const r = state.root.getBoundingClientRect();
+
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
                 fx: parent.width > 0 ? (r.left - parent.left) / parent.width : 0,
                 fy: parent.height > 0 ? (r.top - parent.top) / parent.height : 0
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-        } catch (err) { /* storage unavailable */ }
-    }
+            }));
+        } catch (ignore) { /* storage unavailable: the position is simply not remembered */ }
+    };
 
-    restorePosition() {
+    const restorePosition = function (state) {
         let pos = null;
-        try { pos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch (err) { return; }
-        if (!pos || typeof pos.fx !== "number" || typeof pos.fy !== "number") return;
-        const parent = this.parentElement.getBoundingClientRect();
-        this.moveTo(parent.left + pos.fx * parent.width, parent.top + pos.fy * parent.height);
-    }
-}
 
-if (!customElements.get("ace-pedalgraph")) {
-    customElements.define("ace-pedalgraph", PedalGraph);
-    console.log("[PedalGraph] element registered");
-}
+        try {
+            pos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        } catch (ignore) { /* unreadable store: keep the stylesheet's default position */ }
+
+        if (!pos || typeof pos.fx !== "number" || typeof pos.fy !== "number") { return; }
+
+        const parent = state.root.parentElement.getBoundingClientRect();
+
+        moveTo(state, parent.left + pos.fx * parent.width, parent.top + pos.fy * parent.height);
+    };
+
+    const onMouseDown = function (state, e) {
+        const r = state.root.getBoundingClientRect();
+
+        state.dragging = true;
+        state.dragOffset.x = e.clientX - r.left;
+        state.dragOffset.y = e.clientY - r.top;
+        state.root.classList.add("dragging");
+    };
+
+    const onMouseMove = function (state, e) {
+        if (!state.dragging) { return; }
+
+        moveTo(state, e.clientX - state.dragOffset.x, e.clientY - state.dragOffset.y);
+    };
+
+    const onMouseUp = function (state) {
+        if (!state.dragging) { return; }
+
+        state.dragging = false;
+        state.root.classList.remove("dragging");
+        savePosition(state);
+    };
+
+    // ---- lifecycle ---------------------------------------------------------------
+
+    /**
+     * Build the widget inside `root`, restore its position, wire the drag handlers
+     * and start the frame loop. Returns the state `detach` needs.
+     */
+    const attach = function (root) {
+        const state = create(root);
+
+        state.handlers = {
+            down: function (e) { onMouseDown(state, e); },
+            move: function (e) { onMouseMove(state, e); },
+            up: function () { onMouseUp(state); }
+        };
+
+        root.addEventListener("mousedown", state.handlers.down);
+        window.addEventListener("mousemove", state.handlers.move);
+        window.addEventListener("mouseup", state.handlers.up);
+
+        restorePosition(state);
+
+        state.rafId = requestAnimationFrame(function (now) { tick(state, now); });
+        console.log("[PedalGraph] widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
+
+        return state;
+    };
+
+    /** Stop the loop and release the listeners. The DOM is left in place. */
+    const detach = function (state) {
+        cancelAnimationFrame(state.rafId);
+        state.rafId = 0;
+        state.dragging = false;
+        state.root.classList.remove("dragging");
+
+        if (state.handlers) {
+            state.root.removeEventListener("mousedown", state.handlers.down);
+            window.removeEventListener("mousemove", state.handlers.move);
+            window.removeEventListener("mouseup", state.handlers.up);
+            state.handlers = null;
+        }
+    };
+
+    return {
+        SAMPLE_HZ: SAMPLE_HZ,
+        WINDOW_S: WINDOW_S,
+        N: N,
+        STORAGE_KEY: STORAGE_KEY,
+        TRACES: TRACES,
+        clamp: clamp,
+        create: create,
+        readModel: readModel,
+        commitSample: commitSample,
+        renderFrame: renderFrame,
+        tick: tick,
+        moveTo: moveTo,
+        savePosition: savePosition,
+        restorePosition: restorePosition,
+        attach: attach,
+        detach: detach
+    };
+}());
+
+/** Boot: hud.html carries `<div id="pedalgraph">`; attach to it once the DOM exists. */
+(function () {
+    const boot = function () {
+        const root = document.getElementById("pedalgraph");
+
+        if (root) { PedalGraph.attach(root); }
+    };
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+    } else {
+        boot();
+    }
+}());

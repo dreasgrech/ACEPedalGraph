@@ -6,7 +6,7 @@
     <script type="module" src='js/components.js'></script>
     <!-- PedalGraph mod: extra HUD widget (throttle / brake / clutch / handbrake traces) -->
     <script>window.PEDALGRAPH_SOURCE = "kspkg";</script>
-    <script type="module" src='js/pedalgraph.js'></script>
+    <script defer src='js/pedalgraph.js'></script>
 
     <link rel='stylesheet' type='text/css' href='css/ui.css'>
     <link rel='stylesheet' type='text/css' href='css/uicomponents.css'>
@@ -21,8 +21,8 @@
         <ks-hud-freeroam id="mainHUD"
             data-bind-if="{{ModelUIState}}.gamemode == GAMEMODETYPE.Freeroam"
             data-bind-process="APF().process({{ModelUISessionState}})"></ks-hud-freeroam>
-        <!-- PedalGraph mod widget -->
-        <ace-pedalgraph id="pedalgraph"></ace-pedalgraph>
+        <!-- PedalGraph mod widget: PedalGraph.attach() fills this in -->
+        <div id="pedalgraph"></div>
     </div>
     <ks-modaldialog></ks-modaldialog>
 </body>
