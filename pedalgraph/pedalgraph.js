@@ -76,6 +76,9 @@ const PedalGraph = (function () {
         item: "pg-item",
         swatch: "pg-swatch",
         value: "pg-val",
+        attract: "pg-attract",
+        attractBox: "pg-attract-box",
+        attractOn: "pg-on",
         noData: "pg-nodata",
         plot: "pg-plot",
         graph: "pg-graph",
@@ -114,7 +117,15 @@ const PedalGraph = (function () {
     const close = ACEUIModLoader.close;
     const toArray = ACEUIModLoader.toArray;
     const percentText = ACEUIModLoader.percentText;
+    const persist = ACEUIModLoader.persist;
     const log = me.log;
+
+    /** Attract mode: the widget drives itself with scripted pedal inputs (same as dev/preview.html). */
+    const ATTRACT_KEY = me.key("attract");
+    /** Seconds for one scripted lap of the demo. */
+    const ATTRACT_CYCLE_S = 14;
+    /** The live attached state, so the demo can be toggled from the dev console: PedalGraph.attract(true). */
+    let current = null;
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -179,7 +190,15 @@ const PedalGraph = (function () {
             return el("div", CLASS.grid, { style: "top:" + pct + "%" }) + close("div");
         }).join("");
 
-        return el("div", CLASS.header)
+        // temporary control for recording a demo video; a div toggle (Cohtml has no native checkbox),
+        // positioned by CSS above the widget's top-left so it never crowds the header; data-nodrag = no drag
+        const attract = el("div", CLASS.attract, { "data-nodrag": "" })
+            + el("div", CLASS.attractBox, { "data-nodrag": "" }) + close("div")
+            + "Attract mode"
+            + close("div");
+
+        return attract
+            + el("div", CLASS.header)
             + el("div", CLASS.legend) + legend + close("div")
             + el("div", CLASS.noData) + NO_DATA_TEXT + close("div")
             + close("div")
@@ -206,12 +225,16 @@ const PedalGraph = (function () {
             levels: toArray(root.querySelectorAll("." + CLASS.level + " > ." + CLASS.fill)),
             vals: toArray(root.querySelectorAll("." + CLASS.value)),
             noData: root.querySelector("." + CLASS.noData),
+            attractToggle: root.querySelector("." + CLASS.attract),
+            attractBox: root.querySelector("." + CLASS.attractBox),
+            attractHandler: null,
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
             sampler: ACEUIModLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS),
             lastLog: 0,
             lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
+            attract: false,             // self-running demo (persisted, toggled from the dev console)
             panel: null,                // ACEUIModLoader.panel state (drag + position)
             loop: null                  // ACEUIModLoader.loop handle
         };
@@ -230,6 +253,83 @@ const PedalGraph = (function () {
 
             return typeof x === "number" ? clamp(x, 0, 1) : 0;
         });
+    };
+
+    /** Corners in the scripted lap: braking point (s), peak brake, hard-press time, trail-off time. */
+    const ATTRACT_CORNERS = [
+        { at: 2.6, peak: 0.98, rise: 0.28, trail: 2.1 },   // heavy stop for a hairpin
+        { at: 7.4, peak: 0.55, rise: 0.20, trail: 1.1 },   // light dab for a fast kink
+        { at: 11.0, peak: 0.85, rise: 0.30, trail: 1.7 }    // medium-speed corner
+    ];
+    /** One brief handbrake flick per lap (a tight turn), centre time and half-width in seconds. */
+    const ATTRACT_HANDBRAKE = { at: 12.1, width: 0.35 };
+
+    /** ease-out (fast then settling): 0..1 -> 0..1. */
+    const easeOut = function (x) { return 1 - (1 - x) * (1 - x); };
+
+    /** A smooth 0->1->0 bump, 1 at the centre, 0 at +/- width; for clutch and handbrake pulses. */
+    const bump = function (t, centre, width) {
+        const d = Math.abs(t - centre);
+
+        return d >= width ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * d / width);
+    };
+
+    /** Brake for one corner: presses hard and fast (ease-out rise), then trails off gradually (ease-out fall). */
+    const cornerBrake = function (phase, corner) {
+        const t = phase - corner.at;
+
+        if (t < 0 || t > corner.rise + corner.trail) { return 0; }
+
+        if (t < corner.rise) { return corner.peak * easeOut(t / corner.rise); }
+
+        const k = (t - corner.rise) / corner.trail;
+
+        return corner.peak * (1 - k) * (1 - k);
+    };
+
+    /**
+     * Scripted pedal inputs for attract mode, in TRACES order, shaped like a human's: braking is a
+     * hard fast jab that trails off, throttle eases off for corners and rolls back on out of them,
+     * the clutch blips on down- and up-shifts, an occasional handbrake flick. A continuous function
+     * of `now` (no state), so the graph scrolls exactly as it would with real telemetry.
+     */
+    const attractValues = function (now) {
+        const phase = (now / 1000) % ATTRACT_CYCLE_S;
+        let brake = 0;
+        let clutch = 0;
+
+        ATTRACT_CORNERS.forEach(function (corner) {
+            brake = Math.max(brake, cornerBrake(phase, corner));
+            // a down-shift blip going in, an up-shift blip coming out
+            clutch = Math.max(clutch, bump(phase, corner.at + corner.rise + 0.1, 0.12));
+            clutch = Math.max(clutch, bump(phase, corner.at + corner.rise + corner.trail * 0.7, 0.12));
+        });
+
+        // throttle: a gently undulating near-full baseline on the straights, backed off by the brake,
+        // and lifted a touch by the shift blips; the smooth brake curve makes the on/off eases natural
+        const straight = clamp(0.82 + 0.14 * Math.sin(phase * 0.7 + 1), 0, 1);
+        const gas = clamp(straight * (1 - clutch) - 1.25 * brake, 0, 1);
+
+        const values = {
+            gas_percent: gas,
+            brake_percent: brake,
+            clutch_percent: clutch,
+            handbrake_percent: bump(phase, ATTRACT_HANDBRAKE.at, ATTRACT_HANDBRAKE.width)
+        };
+
+        return TRACES.map(function (trace) { return values[trace.key]; });
+    };
+
+    /** Turn the self-running demo on or off, reflect it on the toggle, and remember it. */
+    const setAttract = function (state, on) {
+        state.attract = Boolean(on);
+
+        if (state.attractBox) { state.attractBox.classList.toggle(CLASS.attractOn, state.attract); }
+
+        persist.writeLocal(ATTRACT_KEY, state.attract);
+        log("attract " + (state.attract ? "on" : "off"));
+
+        return state.attract;
     };
 
     /**
@@ -287,7 +387,7 @@ const PedalGraph = (function () {
     const tick = function (state, now) {
         ACEUIModLoader.panel.update(state.panel, now);
 
-        const v = readModel();
+        const v = state.attract ? attractValues(now) : readModel();
         const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
         if (!v) {
@@ -326,9 +426,18 @@ const PedalGraph = (function () {
     const attach = function (root) {
         const state = create(root);
 
+        state.attract = Boolean(persist.readLocal(ATTRACT_KEY));
+
+        if (state.attractToggle) {
+            state.attractBox.classList.toggle(CLASS.attractOn, state.attract);
+            state.attractHandler = function () { setAttract(state, !state.attract); };
+            state.attractToggle.addEventListener("click", state.attractHandler);
+        }
+
         state.panel = ACEUIModLoader.panel.attach(root, { hudId: me.hudId, storageKey: me.storageKey, log: log });
         state.loop = ACEUIModLoader.loop.start(function (now) { tick(state, now); });
-        log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
+        current = state;
+        log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz, attract " + (state.attract ? "on" : "off"));
 
         return state;
     };
@@ -337,6 +446,13 @@ const PedalGraph = (function () {
     const detach = function (state) {
         ACEUIModLoader.loop.stop(state.loop);
         ACEUIModLoader.panel.detach(state.panel);
+
+        if (state.attractToggle && state.attractHandler) {
+            state.attractToggle.removeEventListener("click", state.attractHandler);
+            state.attractHandler = null;
+        }
+
+        if (current === state) { current = null; }
     };
 
     log("script loaded, version=" + me.version + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
@@ -349,6 +465,10 @@ const PedalGraph = (function () {
         TRACES: TRACES,
         create: create,
         readModel: readModel,
+        attractValues: attractValues,
+        setAttract: setAttract,
+        /** Toggle the self-running demo on the live widget from the dev console: PedalGraph.attract(true). */
+        attract: function (on) { return current ? setAttract(current, on) : false; },
         commitSample: commitSample,
         renderFrame: renderFrame,
         tick: tick,

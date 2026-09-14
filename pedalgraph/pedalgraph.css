@@ -80,6 +80,40 @@ body.hide-hud .ace-pedalgraph {
     opacity: 0.6;
 }
 
+/* temporary demo toggle (for recording); a div checkbox, since Cohtml has no native one.
+   Floated above the widget's top-left so it never overflows the header. */
+.ace-pedalgraph .pg-attract {
+    position: absolute;
+    left: 0;
+    top: -1.5rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0.15rem 0.4rem;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 0.2rem;
+    font-size: 0.7rem;
+    font-weight: 400;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.ace-pedalgraph .pg-attract-box {
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-right: 0.3rem;
+    border: 1px solid #888;
+    border-radius: 0.15rem;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.ace-pedalgraph .pg-attract-box.pg-on {
+    background: #3aa6ff;
+    border-color: #3aa6ff;
+    box-shadow: inset 0 0 0 0.12rem #181b1e;
+}
+
 /* ---- plot: scrolling strips ----------------------------------------------------- */
 
 .ace-pedalgraph .pg-plot {
