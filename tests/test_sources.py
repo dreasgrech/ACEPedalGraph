@@ -1,23 +1,27 @@
-"""Static regression checks on the shipped UI sources.
+"""Static regression checks on the shipped mod files.
 
 These guard against the mistakes that already bit us once, and against drifting
 away from the project's JavaScript style:
   - anything that rebuilds geometry per frame (SVG paths) crashes the game
   - CSS var() fallback syntax is not supported by the game's Cohtml build
-  - hud.html must keep the stock structure and only add our hooks
+  - mod.json must describe exactly the files that exist, in the right order
   - style: IIFE modules, function expressions, let/const, no classes, no `this`
   - the version is declared once per artefact and they all agree
 """
+import json
 import os
 import re
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HUD = os.path.join(ROOT, "src", "uiresources", "hud.html")
-JS = os.path.join(ROOT, "src", "uiresources", "js", "pedalgraph.js")
-CSS = os.path.join(ROOT, "src", "uiresources", "assets", "pedalgraph.css")
+SRC = os.path.join(ROOT, "src")
+JS = os.path.join(SRC, "pedalgraph.js")
+ENTRY = os.path.join(SRC, "mod.js")
+CSS = os.path.join(SRC, "pedalgraph.css")
+MOD_JSON = os.path.join(SRC, "mod.json")
 VERSION_FILE = os.path.join(ROOT, "VERSION")
 PREVIEW = os.path.join(ROOT, "dev", "preview.html")
+HARNESS = os.path.join(ROOT, "tests", "widget", "harness.html")
 
 
 def read(path):
@@ -38,46 +42,42 @@ def strip_comments(src):
     return re.sub(r"//[^\n]*", "", src)
 
 
-class HudHtmlTests(unittest.TestCase):
+class ModManifestTests(unittest.TestCase):
     def setUp(self):
-        self.html = read(HUD)
+        self.info = json.loads(read(MOD_JSON))
 
-    def test_stock_scripts_and_styles_present_in_order(self):
-        order = ["js/cohtml.js", "js/components.js", "js/pedalgraph.js",
-                 "css/ui.css", "css/uicomponents.css", "assets/pedalgraph.css"]
-        positions = [self.html.find(s) for s in order]
-        self.assertTrue(all(p >= 0 for p in positions), positions)
-        self.assertEqual(positions, sorted(positions), "load order changed")
+    def test_required_fields(self):
+        self.assertEqual(self.info["name"], "pedalgraph")
+        self.assertRegex(self.info["version"], r"^\d+\.\d+\.\d+$")
+        self.assertEqual(self.info["pages"], ["hud.html"])
 
-    def test_pedalgraph_script_is_deferred_classic_script(self):
-        # classic (non-module) so `const PedalGraph` is a page-wide binding; deferred so
-        # the #pedalgraph element exists when the boot block runs
-        self.assertIsNotNone(re.search(r"<script defer src='js/pedalgraph.js'></script>", self.html))
-        self.assertNotIn('type="module" src=\'js/pedalgraph.js\'', self.html)
+    def test_listed_files_exist_and_nothing_else_ships(self):
+        listed = set(self.info["scripts"]) | set(self.info["styles"]) | {"mod.json"}
+        present = set(os.listdir(SRC))
+        self.assertEqual(listed, present, "mod.json must list exactly the files in src/")
 
-    def test_stylesheet_linked_after_stock_styles(self):
-        self.assertIn("<link rel='stylesheet' type='text/css' href='assets/pedalgraph.css'>", self.html)
+    def test_widget_loads_before_entry(self):
+        scripts = self.info["scripts"]
+        self.assertLess(scripts.index("pedalgraph.js"), scripts.index("mod.js"))
 
-    def test_source_tag_set_before_widget_script(self):
-        tag = self.html.find('window.PEDALGRAPH_SOURCE = "kspkg"')
-        script = self.html.find("js/pedalgraph.js")
-        self.assertGreater(tag, 0)
-        self.assertLess(tag, script)
+    def test_no_stock_file_is_overridden(self):
+        # a loose mod must only add files; hud.html / cohtml.js belong to the loader
+        for name in os.listdir(SRC):
+            self.assertNotIn(name, ("hud.html", "cohtml.js", "components.js"))
 
-    def test_widget_root_inside_absolutecenter(self):
-        self.assertEqual(self.html.count('id="pedalgraph"'), 1)
-        center = self.html.find('class="absolutecenter"')
-        elem = self.html.find('id="pedalgraph"')
-        end = self.html.find("<ks-modaldialog>")
-        self.assertTrue(center < elem < end)
-        self.assertNotIn("<ace-pedalgraph", self.html, "custom element replaced by a plain div")
 
-    def test_stock_hud_elements_untouched(self):
-        for needle in ['<ks-hud id="mainHUD"', '<ks-hud-freeroam id="mainHUD"',
-                       "<ks-dev-reloadbutton>", "<ks-modaldialog>",
-                       'GAMEMODETYPE.Racing', 'GAMEMODETYPE.Freeroam',
-                       'data-bind-process="APF().process({{ModelUISessionState}})"']:
-            self.assertIn(needle, self.html, needle)
+class EntryTests(unittest.TestCase):
+    def setUp(self):
+        self.js = read(ENTRY)
+
+    def test_entry_attaches_into_the_hud_container(self):
+        self.assertIn('".absolutecenter"', self.js)
+        self.assertIn("PedalGraph.ROOT_ID", self.js)
+        self.assertIn("PedalGraph.attach(root)", self.js)
+        self.assertIn("not attaching twice", self.js)
+
+    def test_entry_logs_through_the_loader_when_present(self):
+        self.assertIn('AceMods.logger("[PedalGraph]")', self.js)
 
 
 class WidgetSourceTests(unittest.TestCase):
@@ -97,18 +97,12 @@ class WidgetSourceTests(unittest.TestCase):
         self.assertNotIn("getContext(", self.js)
 
     def test_no_css_in_script(self):
-        # styling belongs to assets/pedalgraph.css; the script only writes transforms
         self.assertNotIn("createElement(\"style\")", self.js)
         self.assertNotIn("background:", self.js)
-        self.assertNotIn("#pedalgraph-style", self.js)
         self.assertIsNone(re.search(r"style\.(width|height|background|color|opacity|left|top)\s*=",
                                     self.js[self.js.find("const commitSample"):self.js.find("// ---- drag")]))
 
     def test_no_css_var_fallback_syntax(self):
-        for path in (JS, CSS, PREVIEW):
-            src = read(path)
-            src = src[src.find("pedalgraph.css"):] if path == PREVIEW else src
-            # the preview page's own <style> may use fallbacks; the widget css must not
         self.assertIsNone(re.search(r"var\(--[a-z0-9-]+\s*,", read(CSS)),
                           "var(--x, fallback) is not supported by the game's Cohtml")
         self.assertIsNone(re.search(r"var\(--", self.js), "no CSS in the script")
@@ -128,7 +122,6 @@ class WidgetSourceTests(unittest.TestCase):
 
     def test_no_magic_literals_in_hot_path(self):
         hot = strip_comments(self.js[self.js.find("const commitSample"):self.js.find("// ---- drag")])
-        # numbers allowed in the hot path: 0/1 (indices, clamps) and 100 (percent)
         numbers = set(re.findall(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])", hot))
         self.assertTrue(numbers <= {"0", "1", "100"}, f"magic numbers in hot path: {sorted(numbers)}")
         self.assertNotIn("toFixed(", hot.replace("toFixed(SCALE_DECIMALS)", "").replace("toFixed(SHIFT_DECIMALS)", "")
@@ -143,9 +136,8 @@ class WidgetSourceTests(unittest.TestCase):
         self.assertIn("const PedalGraph = (function () {", self.js)
         self.assertIn("}());", self.js)
         self.assertIn('const ROOT_ID = "pedalgraph"', self.js)
-        self.assertIn("document.getElementById(PedalGraph.ROOT_ID)", self.js)
         self.assertIn("script loaded, version=", self.js)
-        for name in ("VERSION", "attach", "detach", "readModel", "commitSample", "renderFrame", "moveTo", "CLASS"):
+        for name in ("VERSION", "ROOT_ID", "attach", "detach", "readModel", "commitSample", "renderFrame", "moveTo", "CLASS"):
             self.assertRegex(self.js, rf"\n\s+{name}: {name},?\n", f"{name} not exported")
 
     def test_lifecycle_cleanup(self):
@@ -177,28 +169,31 @@ class VersionTests(unittest.TestCase):
     def test_version_file_is_semver(self):
         self.assertRegex(read(VERSION_FILE).strip(), self.SEMVER)
 
-    def test_script_version_matches_version_file(self):
-        js_version = re.search(r'const VERSION = "([^"]+)"', read(JS)).group(1)
-        self.assertEqual(js_version, read(VERSION_FILE).strip())
+    def test_script_and_manifest_match_version_file(self):
+        v = read(VERSION_FILE).strip()
+        self.assertEqual(re.search(r'const VERSION = "([^"]+)"', read(JS)).group(1), v)
+        self.assertEqual(json.loads(read(MOD_JSON))["version"], v)
 
     def test_readme_mentions_current_version(self):
         self.assertIn(read(VERSION_FILE).strip(), read(os.path.join(ROOT, "README.md")))
 
 
-class PreviewTests(unittest.TestCase):
-    def test_preview_loads_the_real_sources(self):
+class PreviewAndHarnessTests(unittest.TestCase):
+    def test_pages_load_the_real_sources(self):
         html = read(PREVIEW)
-        self.assertIn('href="../src/uiresources/assets/pedalgraph.css"', html)
-        self.assertIn('src="../src/uiresources/js/pedalgraph.js"', html)
+        self.assertIn('href="../src/pedalgraph.css"', html)
+        self.assertIn('src="../src/pedalgraph.js"', html)
         self.assertIn('id="pedalgraph"', html)
-        self.assertIn("--font-family-main", html, "must define the game's font variable")
-        self.assertIn("PEDALGRAPH_SOURCE", html)
+        self.assertIn("--font-family-main", html)
+        harness = read(HARNESS)
+        self.assertIn('href="../../src/pedalgraph.css"', harness)
+        self.assertIn('src="../../src/pedalgraph.js"', harness)
 
 
 class StyleTests(unittest.TestCase):
     """The project's JavaScript conventions (see the uplinkjs scripts)."""
 
-    FILES = {"widget": JS, "preview": PREVIEW}
+    FILES = {"widget": JS, "entry": ENTRY, "preview": PREVIEW}
 
     def code_of(self, path):
         src = read(path)
@@ -231,23 +226,23 @@ class StyleTests(unittest.TestCase):
             _, code = self.code_of(path)
             self.assertIsNone(re.search(r"\bvar\s", code), name)
 
-    def test_iife_module(self):
-        code = strip_js(read(JS))
-        self.assertIsNotNone(re.search(r"const PedalGraph = \(function \(\) \{", code))
-        self.assertIsNotNone(re.search(r"\n\}\(\)\);", code))
+    def test_iife_shapes(self):
+        self.assertIsNotNone(re.search(r"const PedalGraph = \(function \(\) \{", strip_js(read(JS))))
+        self.assertIsNotNone(re.search(r"\n\}\(\)\);", strip_js(read(JS))))
+        self.assertIsNotNone(re.search(r"^\(function \(\) \{", strip_js(read(ENTRY)), re.M))
 
     def test_formatting_conventions(self):
-        js = read(JS)
-        self.assertNotIn("\t", js)
-        for line in js.splitlines():
-            if line.lstrip().startswith("*"):
-                continue  # JSDoc continuation lines are aligned one space in, as in the reference
-            stripped = len(line) - len(line.lstrip(" "))
-            self.assertEqual(stripped % 4, 0, f"indent not a multiple of 4: {line!r}")
-        no_comments = strip_comments(js)
-        self.assertEqual(re.findall(r"^[^\"'\n]*'", no_comments, re.M), [], "single-quoted string literal")
-        self.assertIsNone(re.search(r"\bif \([^\n]*\)\s*[a-z][^{\n]*;\s*$", strip_js(js), re.M),
-                          "if without braces")
+        for path in (JS, ENTRY):
+            js = read(path)
+            self.assertNotIn("\t", js)
+            for line in js.splitlines():
+                if line.lstrip().startswith("*"):
+                    continue
+                stripped = len(line) - len(line.lstrip(" "))
+                self.assertEqual(stripped % 4, 0, f"indent not a multiple of 4: {line!r}")
+            no_comments = strip_comments(js)
+            self.assertEqual(re.findall(r"^[^\"'\n]*'", no_comments, re.M), [], f"single-quoted literal in {path}")
+            self.assertIsNone(re.search(r"\bif \([^\n]*\)\s*[a-z][^{\n]*;\s*$", strip_js(js), re.M), "if without braces")
 
 
 if __name__ == "__main__":

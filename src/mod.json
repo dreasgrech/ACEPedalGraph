@@ -1,0 +1,7 @@
+{
+  "name": "pedalgraph",
+  "version": "0.3.0",
+  "pages": ["hud.html"],
+  "styles": ["pedalgraph.css"],
+  "scripts": ["pedalgraph.js", "mod.js"]
+}

@@ -1,20 +1,18 @@
 # ACE PedalGraph
 
 HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle,
-brake, clutch and handbrake input. Version 0.2.2, working as of 2026-09-14 on
-game version 0.9.1+release.6.
+brake, clutch and handbrake input. Version 0.3.0, for game version
+0.9.1+release.6.
 
-This repository is the mod only. The packaging tools and the loader live in
-`ACEUIModLoader`; everything learned about the game and its UI engine is in
-`ACEGameInternals` (`docs/`). Clone all three side by side.
+This repository is the mod only. It is loaded by the `ACEUIModLoader` package
+and installed with that repo's tools; everything learned about the game and its
+UI engine is in `ACEGameInternals` (`docs/`). Clone all three side by side.
 
 ## Layout
 
-- `src/uiresources/hud.html` - copy of the stock HUD page with one extra
-  deferred `<script>` tag, one `<link>` for the widget stylesheet, a source
-  tag, and one `<div id="pedalgraph">`. (Temporary: once the loader exists the
-  mod becomes a loose folder with a slot script and stops overriding this.)
-- `src/uiresources/js/pedalgraph.js` - the widget, an IIFE module
+- `src/mod.json` - what the loader reads: name, version, the pages to load on
+  (`hud.html`), the stylesheet and the scripts in load order.
+- `src/pedalgraph.js` - the widget, an IIFE module
   (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
@@ -23,25 +21,31 @@ This repository is the mod only. The packaging tools and the loader live in
   `localStorage` as fallback; hidden until placed; hides with the HUD. Writes
   no colours or sizes, only transforms; every class name, timing and
   precision is a named constant.
-- `src/uiresources/assets/pedalgraph.css` - all styling, including the trace
-  colours keyed by `data-trace` index.
+- `src/mod.js` - loader entry point: creates `<div id="pedalgraph">` inside the
+  HUD's positioning container and calls `PedalGraph.attach`.
+- `src/pedalgraph.css` - all styling, including the trace colours keyed by
+  `data-trace` index.
 - `VERSION` - the mod version, single source of truth (see Versioning).
 - `dev/preview.html` - runs the widget outside the game (see below).
-- `tools/build.py` - thin wrapper around the loader's packer.
+- `tools/install.py` - thin wrapper around the loader's `install_mod.py`.
 - `tests/` - this mod's tests, see below.
-- `dist/pedalgraph.kspkg` - built package (git-ignored, 69 MB).
 
-## Build and install
+The mod does not override any stock file. It is a loose folder the game reads
+from `%USERPROFILE%\Saved Games\ACE\mods\uiresources\acemods\pedalgraph\`.
+
+## Install
+
+The loader package must be installed once (from `ACEUIModLoader`:
+`python tools/build_loader.py --install`). Then:
 
 ```
-python tools/build.py --install
+python tools/install.py            # copy src/ into the mods folder and register it
+python tools/install.py --remove
 ```
 
-This calls `../ACEUIModLoader/tools/pack_kspkg.py`, which adds the padding
-that makes the `hud.html` override win for the installed game version, verifies
-the package and copies it to `%USERPROFILE%\Saved Games\ACE\mods\`. Delete it
-from there to restore the stock HUD. Set `ACE_LOADER_DIR` / `ACE_INTERNALS_DIR`
-if the sibling repos are elsewhere.
+Edits to `src/` need only a re-run of `install.py` (or a copy of the changed
+file) and a HUD reload in game; pressing Escape and resuming reloads the HUD
+page. Set `ACE_LOADER_DIR` if the loader repo is elsewhere.
 
 ## Preview outside the game
 
@@ -65,10 +69,11 @@ rendering still needs one in-game run, checked with the loader's
 
 `VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
 it in `const VERSION`, logs it in its first line (`script loaded,
-version=0.2.2, source=kspkg`), and exposes it as `PedalGraph.VERSION`. A test
-fails if the two disagree or if this README stops mentioning the current
-version, so bumping means: edit `VERSION`, edit the constant, mention it here,
-rebuild. `check_ingame_log.py` prints the version the game actually ran.
+version=0.3.0, source=acemods`), and exposes it as `PedalGraph.VERSION`;
+`src/mod.json` repeats it for the loader. A test fails if they disagree or if
+this README stops mentioning the current version, so bumping means: edit
+`VERSION`, the constant, `mod.json`, mention it here, reinstall.
+`check_ingame_log.py` prints the version the game actually ran.
 
 History: 0.1.0 proof of concept (custom element, module script);
 0.2.0 IIFE module in project style, external stylesheet, named constants,
@@ -76,7 +81,8 @@ version stamp, preview page, test suite; 0.2.1 the game's override
 resolution reverse-engineered and replayed by the packer (padding), so the
 package no longer depends on luck; 0.2.2 position persisted through the
 stock HUD layout store (survives Escape/resume and game restarts), hidden
-until placed.
+until placed; 0.3.0 converted from a hud.html-override package to a loose
+folder loaded by `ACEUIModLoader`, so it coexists with other UI mods.
 
 ## Code style (JavaScript)
 
@@ -100,13 +106,15 @@ Elements need a class, so the widget attaches to a plain `<div>` instead.
 python -m unittest discover -s tests -v
 ```
 
-- `tests/test_sources.py` - static rules on the shipped files: hud.html keeps
-  the stock structure and load order; the widget has no per-frame geometry
-  (SVG/canvas), no CSS in the script, no `var(--x, fallback)`, no magic
-  numbers in the hot path, balanced brackets, consistent constants, lifecycle
-  cleanup; every class name the script uses is styled and every trace has a
-  colour; the version agrees across `VERSION`, the script and this README;
-  the preview page loads the real sources; and the JavaScript style rules.
+- `tests/test_sources.py` - static rules on the shipped files: `mod.json`
+  lists exactly the files in `src/` with the widget before the entry script
+  and overrides nothing; the widget has no per-frame geometry (SVG/canvas), no
+  CSS in the script, no `var(--x, fallback)`, no magic numbers in the hot
+  path, balanced brackets, consistent constants, lifecycle cleanup; every
+  class name the script uses is styled and every trace has a colour; the
+  version agrees across `VERSION`, the script, `mod.json` and this README; the
+  preview page and harness load the real sources; and the JavaScript style
+  rules.
 - `tests/test_widget_browser.py` - runs `tests/widget/harness.html` in a
   headless Edge or Chrome with a fake animation clock, fake `localStorage`,
   fake `ModelCurrentCar` and fake HUD store: 20 behavioural cases covering
@@ -114,17 +122,15 @@ python -m unittest discover -s tests -v
   no browser is found (`ACE_BROWSER=<path>` overrides). The runner uses a
   throwaway profile, kills the process tree on timeout and verifies no browser
   process is left behind.
-- `tests/test_build.py` - packs `src/` with the loader's packer and checks the
-  `hud.html` override is predicted to win against the installed game. Skipped
-  without the sibling repos.
 
 ## Verifying in game
 
 The game writes UI `console.log` output into `Saved Games\ACE\Logs\log-*.txt`
 as `[gameface]` lines. Run `python ..\ACEUIModLoader\tools\check_ingame_log.py`
-after playing: `script loaded, source=kspkg` means the modified hud.html was
-served from the mod package, `sampling ok` once a minute means car data is
-flowing, and the position save/restore lines show persistence working.
+after playing: `[AceMods] mod pedalgraph 0.3.0: loading` followed by
+`[PedalGraph] script loaded, ... source=acemods` means the loader served the
+mod, `sampling ok` once a minute means car data is flowing, and the position
+save/restore lines show persistence working.
 
 ## Rendering rules learned the hard way
 

@@ -1,5 +1,6 @@
 # build output: 69 MB per package (64 MB of that is the fixed-size file table)
-dist/*.kspkg
+build/
+dist/
 
 # python
 __pycache__/

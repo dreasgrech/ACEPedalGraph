@@ -45,9 +45,9 @@ window.__log = [];
 const __origLog = console.log.bind(console);
 console.log = function () { const a = Array.prototype.slice.call(arguments); window.__log.push(a.join(" ")); __origLog.apply(null, a); };
 </script>
-<link rel="stylesheet" type="text/css" href="../../src/uiresources/assets/pedalgraph.css">
+<link rel="stylesheet" type="text/css" href="../../src/pedalgraph.css">
 <!-- same kind of script tag as hud.html: classic, so `PedalGraph` is a page-wide binding -->
-<script src="../../src/uiresources/js/pedalgraph.js"></script>
+<script src="../../src/pedalgraph.js"></script>
 </head>
 <body>
 <div class="absolutecenter" id="center"></div>
