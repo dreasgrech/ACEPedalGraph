@@ -1,11 +1,7 @@
-# build output: 69 MB per package (64 MB of that is the fixed-size file table)
-build/
-dist/
-
 # python
 __pycache__/
 *.pyc
 
-# editor swap / temp files (the packer skips them too)
+# editor swap / temp files (install_mod.py skips them too)
 *.swp
 *~
