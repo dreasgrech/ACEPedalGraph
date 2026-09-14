@@ -339,17 +339,12 @@ const PedalGraph = (function () {
         ACEUIModLoader.panel.detach(state.panel);
     };
 
-    log("script loaded, version=" + me.version + ", source=" + (window.PEDALGRAPH_SOURCE || "ACEUIModLoader") + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
+    log("script loaded, version=" + me.version + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
 
     return {
-        VERSION: me.version,
-        LOG_PREFIX: me.prefix,
         SAMPLE_HZ: SAMPLE_HZ,
         WINDOW_S: WINDOW_S,
         N: N,
-        STORAGE_KEY: me.storageKey,
-        HUD_ELEMENT_ID: me.hudId,
-        ROOT_ID: me.name,
         CLASS: CLASS,
         TRACES: TRACES,
         create: create,
@@ -362,17 +357,5 @@ const PedalGraph = (function () {
     };
 }());
 
-/** Boot for pages that carry `<div id="pedalgraph">` themselves (the preview page); in game the loader creates it. */
-(function () {
-    const boot = function () {
-        const root = document.getElementById(PedalGraph.ROOT_ID);
-
-        if (root) { PedalGraph.attach(root); }
-    };
-
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", boot);
-    } else {
-        boot();
-    }
-}());
+/* Attach to #pedalgraph: the loader creates it in game, the preview page carries it. */
+ACEUIModLoader.mod("pedalgraph").mount(PedalGraph.attach);
