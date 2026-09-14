@@ -1,7 +1,7 @@
 /*
  * PedalGraph -- widget stylesheet.
  *
- * Linked into hud.html by the AceMods loader after the stock ui.css /
+ * Linked into hud.html by the ACEUIModLoader after the stock ui.css /
  * uicomponents.css, so the font variable below is the game's. Trace colours live here, keyed by the
  * data-trace index the script puts on each strip and legend item (see TRACES
  * in pedalgraph.js: 0 clutch, 1 handbrake, 2 brake, 3 throttle).
@@ -29,7 +29,7 @@
     border-color: #bd0000;
 }
 
-/* (AceMods.panel keeps the root invisible via an inline style until its stored position is applied) */
+/* (ACEUIModLoader.panel keeps the root invisible via an inline style until its stored position is applied) */
 
 body.hide-hud .ace-pedalgraph {
     visibility: hidden;

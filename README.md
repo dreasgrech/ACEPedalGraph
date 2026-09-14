@@ -5,8 +5,8 @@ brake, clutch and handbrake input. Version 0.4.0, for game version
 0.9.1+release.6.
 
 This repository is the mod only. It is loaded by the `ACEUIModLoader` package,
-built on that package's shared library (`AceMods.panel` for drag and position
-persistence, `AceMods.loop` for the frame loop and sampler) and installed with
+built on that package's shared library (`ACEUIModLoader.panel` for drag and position
+persistence, `ACEUIModLoader.loop` for the frame loop and sampler) and installed with
 that repo's tools; everything learned about the game and its UI engine is in
 `ACEGameInternals` (`docs/`). Clone all three side by side: the preview page
 and the tests load the library from `../ACEUIModLoader/src/`.
@@ -19,10 +19,10 @@ and the tests load the library from `../ACEUIModLoader/src/`.
   (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
-  Everything that is not the graph comes from the library: `AceMods.panel`
+  Everything that is not the graph comes from the library: `ACEUIModLoader.panel`
   makes it draggable and stores its position as a fraction of the screen in
   the stock HUD layout container (`HUD.elementModified`, persisted by the
-  game) with `localStorage` as fallback, hidden until placed; `AceMods.loop`
+  game) with `localStorage` as fallback, hidden until placed; `ACEUIModLoader.loop`
   runs the frame loop and the fixed-rate sampler. Hides with the HUD. Writes
   no colours or sizes, only transforms; every class name, timing and
   precision is a named constant.
@@ -36,7 +36,7 @@ and the tests load the library from `../ACEUIModLoader/src/`.
 - `tests/` - this mod's tests, see below.
 
 The mod does not override any stock file. It is a loose folder the game reads
-from `%USERPROFILE%\Saved Games\ACE\mods\uiresources\acemods\pedalgraph\`.
+from `%USERPROFILE%\Saved Games\ACE\mods\uiresources\ACEUIModLoaderMods\pedalgraph\`.
 
 ## Install
 
@@ -55,7 +55,7 @@ page. Set `ACE_LOADER_DIR` if the loader repo is elsewhere.
 ## Preview outside the game
 
 Open `dev/preview.html` in Edge or Chrome (double-click, no server needed). It
-loads the AceMods library from the sibling loader checkout, then the real
+loads the ACEUIModLoader library from the sibling loader checkout, then the real
 `pedalgraph.css` and `pedalgraph.js` from `src/`, inside a 16:9
 stand-in for the game's HUD container and feeds them a fake `ModelCurrentCar`:
 
@@ -75,7 +75,7 @@ rendering still needs one in-game run, checked with the loader's
 
 `VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
 it in `const VERSION`, logs it in its first line (`script loaded,
-version=0.4.0, source=acemods`), and exposes it as `PedalGraph.VERSION`;
+version=0.4.0, source=ACEUIModLoader`), and exposes it as `PedalGraph.VERSION`;
 `src/mod.json` repeats it for the loader. A test fails if they disagree or if
 this README stops mentioning the current version, so bumping means: edit
 `VERSION`, the constant, `mod.json`, mention it here, reinstall.
@@ -90,7 +90,7 @@ stock HUD layout store (survives Escape/resume and game restarts), hidden
 until placed; 0.3.0 converted from a hud.html-override package to a loose
 folder loaded by `ACEUIModLoader`, so it coexists with other UI mods; 0.4.0
 drag, persistence, frame loop and helpers moved into the loader's shared
-library (`AceMods.*`), the widget is now only the graph.
+library (`ACEUIModLoader.*`), the widget is now only the graph.
 
 ## Code style (JavaScript)
 
@@ -138,8 +138,8 @@ python -m unittest discover -s tests -v
 
 The game writes UI `console.log` output into `Saved Games\ACE\Logs\log-*.txt`
 as `[gameface]` lines. Run `python ..\ACEUIModLoader\tools\check_ingame_log.py`
-after playing: `[AceMods] mod pedalgraph 0.4.0: loading` followed by
-`[PedalGraph] script loaded, ... source=acemods` means the loader served the
+after playing: `[ACEUIModLoader] mod pedalgraph 0.4.0: loading` followed by
+`[PedalGraph] script loaded, ... source=ACEUIModLoader` means the loader served the
 mod, `sampling ok` once a minute means car data is flowing, and the position
 save/restore lines show persistence working.
 

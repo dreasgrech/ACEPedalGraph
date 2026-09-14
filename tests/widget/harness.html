@@ -45,13 +45,13 @@ window.__log = [];
 const __origLog = console.log.bind(console);
 console.log = function () { const a = Array.prototype.slice.call(arguments); window.__log.push(a.join(" ")); __origLog.apply(null, a); };
 </script>
-<!-- the AceMods library from the sibling ACEUIModLoader checkout, in load order (in game it is part of cohtml.js) -->
-<script src="../../../ACEUIModLoader/src/acemods.core.js"></script>
-<script src="../../../ACEUIModLoader/src/acemods.console.js"></script>
-<script src="../../../ACEUIModLoader/src/acemods.persist.js"></script>
-<script src="../../../ACEUIModLoader/src/acemods.panel.js"></script>
-<script src="../../../ACEUIModLoader/src/acemods.loop.js"></script>
-<script src="../../../ACEUIModLoader/src/acemods.loader.js"></script>
+<!-- the ACEUIModLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.core.js"></script>
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.console.js"></script>
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.persist.js"></script>
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.panel.js"></script>
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.loop.js"></script>
+<script src="../../../ACEUIModLoader/src/ACEUIModLoader.loader.js"></script>
 <link rel="stylesheet" type="text/css" href="../../src/pedalgraph.css">
 <!-- classic script, as the loader injects it: `PedalGraph` is a page-wide binding -->
 <script src="../../src/pedalgraph.js"></script>
@@ -79,10 +79,10 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     const center = document.getElementById("center");
 
     t("library present, module present, constants as expected, load logged", function () {
-        eq(typeof AceMods, "object", "AceMods library"); eq(typeof AceMods.panel, "object", "panel"); eq(typeof AceMods.loop, "object", "loop");
+        eq(typeof ACEUIModLoader, "object", "ACEUIModLoader library"); eq(typeof ACEUIModLoader.panel, "object", "panel"); eq(typeof ACEUIModLoader.loop, "object", "loop");
         eq(typeof PedalGraph, "object", "PedalGraph module");
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
-        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness, lib=" + AceMods.VERSION) >= 0; }), "no load log");
+        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness, lib=" + ACEUIModLoader.VERSION) >= 0; }), "no load log");
         eq(document.getElementById(PedalGraph.ROOT_ID), null, "harness must not carry the auto-boot root");
         eq(typeof PedalGraph.VERSION, "string", "version exported");
     });
@@ -186,14 +186,14 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     });
 
     t("hidden HUD skips drawing but keeps recording", function () {
-        document.body.classList.add(AceMods.HUD_HIDDEN_CLASS);
+        document.body.classList.add(ACEUIModLoader.HUD_HIDDEN_CLASS);
         const before = tracks[3].style.transform;
         const headBefore = state.head;
         clock.step(80000);
         clock.step(80000 + SAMPLE_MS * 3);
         eq(tracks[3].style.transform, before, "no draw while hidden");
         ok(state.head > headBefore, "history still recording");
-        document.body.classList.remove(AceMods.HUD_HIDDEN_CLASS);
+        document.body.classList.remove(ACEUIModLoader.HUD_HIDDEN_CLASS);
         clock.step(80000 + SAMPLE_MS * 3 + 1);
         ok(tracks[3].style.transform !== before, "draws again when visible");
     });

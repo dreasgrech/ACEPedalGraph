@@ -2,14 +2,14 @@
  * PedalGraph -- Assetto Corsa EVO HUD widget.
  *
  * A scrolling time graph of throttle, brake, clutch and handbrake input, loaded
- * into the stock HUD page by the AceMods loader (see mod.json / mod.js). It knows
+ * into the stock HUD page by the ACEUIModLoader (see mod.json / mod.js). It knows
  * nothing of the stock ks-* component framework; it only reads the global model
  * object the game refreshes every frame and draws into one plain <div>. Styling
  * lives in pedalgraph.css; this file writes no colours or sizes, only transforms.
  *
- * Built on the AceMods library: `AceMods.panel` makes the root draggable and
- * persists its position, `AceMods.loop` runs the frame loop and the fixed-rate
- * sampler, `AceMods` core provides the small helpers. This file is the graph.
+ * Built on the ACEUIModLoader library: `ACEUIModLoader.panel` makes the root draggable and
+ * persists its position, `ACEUIModLoader.loop` runs the frame loop and the fixed-rate
+ * sampler, `ACEUIModLoader` core provides the small helpers. This file is the graph.
  *
  * Data source: `window.ModelCurrentCar` (UICurrentCarState, mirrored into the
  * Gameface UI by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
@@ -64,7 +64,7 @@ const PedalGraph = (function () {
     /** Horizontal reference lines, as percent of the graph height from the top. */
     const GRID_LINES_PCT = [25, 50, 75];
 
-    /** Keys under which AceMods.panel persists the position (stock HUD store, localStorage). */
+    /** Keys under which ACEUIModLoader.panel persists the position (stock HUD store, localStorage). */
     const HUD_ELEMENT_ID = "hud_pedalgraph";
     const STORAGE_KEY = "acepedalgraph.pos";
     /** Element id of the widget's root (mod.js creates it; the preview page carries one). */
@@ -112,12 +112,12 @@ const PedalGraph = (function () {
     const BRAKE = 2;
     const GAS = 3;
 
-    const clamp = AceMods.clamp;
-    const el = AceMods.el;
-    const close = AceMods.close;
-    const toArray = AceMods.toArray;
-    const percentText = AceMods.percentText;
-    const log = AceMods.logger(LOG_PREFIX);
+    const clamp = ACEUIModLoader.clamp;
+    const el = ACEUIModLoader.el;
+    const close = ACEUIModLoader.close;
+    const toArray = ACEUIModLoader.toArray;
+    const percentText = ACEUIModLoader.percentText;
+    const log = ACEUIModLoader.logger(LOG_PREFIX);
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -211,12 +211,12 @@ const PedalGraph = (function () {
             noData: root.querySelector("." + CLASS.noData),
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
-            sampler: AceMods.loop.sampler(SAMPLE_HZ, WINDOW_MS),
+            sampler: ACEUIModLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS),
             lastLog: 0,
             lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
-            panel: null,                // AceMods.panel state (drag + position)
-            loop: null                  // AceMods.loop handle
+            panel: null,                // ACEUIModLoader.panel state (drag + position)
+            loop: null                  // ACEUIModLoader.loop handle
         };
     };
 
@@ -288,13 +288,13 @@ const PedalGraph = (function () {
 
     /** One animation frame: settle the position, commit due samples, then draw. */
     const tick = function (state, now) {
-        AceMods.panel.update(state.panel, now);
+        ACEUIModLoader.panel.update(state.panel, now);
 
         const v = readModel();
         const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
         if (!v) {
-            AceMods.loop.reset(state.sampler);
+            ACEUIModLoader.loop.reset(state.sampler);
 
             if (shouldLog) {
                 state.lastLog = now;
@@ -305,10 +305,10 @@ const PedalGraph = (function () {
         }
 
         // history at the fixed rate (catches up after short hitches, restarts after a stall)
-        const frac = AceMods.loop.advance(state.sampler, now, function () { commitSample(state, v); });
+        const frac = ACEUIModLoader.loop.advance(state.sampler, now, function () { commitSample(state, v); });
 
         // nothing to draw while the HUD is toggled off; history keeps recording
-        if (AceMods.hudHidden()) { return; }
+        if (ACEUIModLoader.hudHidden()) { return; }
 
         renderFrame(state, v, frac);
 
@@ -329,8 +329,8 @@ const PedalGraph = (function () {
     const attach = function (root) {
         const state = create(root);
 
-        state.panel = AceMods.panel.attach(root, { hudId: HUD_ELEMENT_ID, storageKey: STORAGE_KEY, log: log });
-        state.loop = AceMods.loop.start(function (now) { tick(state, now); });
+        state.panel = ACEUIModLoader.panel.attach(root, { hudId: HUD_ELEMENT_ID, storageKey: STORAGE_KEY, log: log });
+        state.loop = ACEUIModLoader.loop.start(function (now) { tick(state, now); });
         log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
 
         return state;
@@ -338,11 +338,11 @@ const PedalGraph = (function () {
 
     /** Stop the loop and release the listeners. The DOM is left in place. */
     const detach = function (state) {
-        AceMods.loop.stop(state.loop);
-        AceMods.panel.detach(state.panel);
+        ACEUIModLoader.loop.stop(state.loop);
+        ACEUIModLoader.panel.detach(state.panel);
     };
 
-    log("script loaded, version=" + VERSION + ", source=" + (window.PEDALGRAPH_SOURCE || "acemods") + ", lib=" + AceMods.VERSION + ", url=" + location.href);
+    log("script loaded, version=" + VERSION + ", source=" + (window.PEDALGRAPH_SOURCE || "ACEUIModLoader") + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
 
     return {
         VERSION: VERSION,

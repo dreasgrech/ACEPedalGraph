@@ -7,7 +7,7 @@ away from the project's JavaScript style:
   - mod.json must describe exactly the files that exist, in the right order
   - style: IIFE modules, function expressions, let/const, no classes, no `this`
   - the version is declared once per artefact and they all agree
-  - the widget uses the AceMods library for everything that is not the graph
+  - the widget uses the ACEUIModLoader library for everything that is not the graph
 """
 import json
 import os
@@ -23,7 +23,7 @@ MOD_JSON = os.path.join(SRC, "mod.json")
 VERSION_FILE = os.path.join(ROOT, "VERSION")
 PREVIEW = os.path.join(ROOT, "dev", "preview.html")
 HARNESS = os.path.join(ROOT, "tests", "widget", "harness.html")
-LIB_FILES = ["acemods.core.js", "acemods.console.js", "acemods.persist.js", "acemods.panel.js", "acemods.loop.js", "acemods.loader.js"]
+LIB_FILES = ["ACEUIModLoader.core.js", "ACEUIModLoader.console.js", "ACEUIModLoader.persist.js", "ACEUIModLoader.panel.js", "ACEUIModLoader.loop.js", "ACEUIModLoader.loader.js"]
 
 
 def read(path):
@@ -83,7 +83,7 @@ class EntryTests(unittest.TestCase):
         self.assertIn("not attaching twice", self.js)
 
     def test_entry_logs_through_the_loader(self):
-        self.assertIn('AceMods.logger("[PedalGraph]")', self.js)
+        self.assertIn('ACEUIModLoader.logger("[PedalGraph]")', self.js)
 
 
 class WidgetSourceTests(unittest.TestCase):
@@ -123,7 +123,7 @@ class WidgetSourceTests(unittest.TestCase):
         win = int(re.search(r"const WINDOW_S = (\d+)", self.js).group(1))
         self.assertIn("const N = SAMPLE_HZ * WINDOW_S", self.js)
         self.assertIn("const STRIP_BARS = 2 * N", self.js)
-        self.assertIn("AceMods.loop.sampler(SAMPLE_HZ, WINDOW_MS)", self.js)
+        self.assertIn("ACEUIModLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS)", self.js)
         self.assertGreaterEqual(hz, 20)
         self.assertLessEqual(hz * win * 2 * 4, 4000, "too many bar elements for the UI")
 
@@ -140,11 +140,11 @@ class WidgetSourceTests(unittest.TestCase):
         self.assertIn("window.ModelCurrentCar", self.js)
 
     def test_uses_the_library_instead_of_its_own_infrastructure(self):
-        # everything that is not the graph comes from AceMods
-        for call in ("AceMods.panel.attach(root, { hudId: HUD_ELEMENT_ID, storageKey: STORAGE_KEY, log: log })",
-                     "AceMods.panel.update(state.panel, now)", "AceMods.panel.detach(state.panel)",
-                     "AceMods.loop.start(", "AceMods.loop.stop(state.loop)", "AceMods.loop.advance(state.sampler, now,",
-                     "AceMods.loop.reset(state.sampler)", "AceMods.hudHidden()", "AceMods.logger(LOG_PREFIX)"):
+        # everything that is not the graph comes from ACEUIModLoader
+        for call in ("ACEUIModLoader.panel.attach(root, { hudId: HUD_ELEMENT_ID, storageKey: STORAGE_KEY, log: log })",
+                     "ACEUIModLoader.panel.update(state.panel, now)", "ACEUIModLoader.panel.detach(state.panel)",
+                     "ACEUIModLoader.loop.start(", "ACEUIModLoader.loop.stop(state.loop)", "ACEUIModLoader.loop.advance(state.sampler, now,",
+                     "ACEUIModLoader.loop.reset(state.sampler)", "ACEUIModLoader.hudHidden()", "ACEUIModLoader.logger(LOG_PREFIX)"):
             self.assertIn(call, self.js, call)
         for own in ("requestAnimationFrame", "cancelAnimationFrame", "localStorage", "window.HUD",
                     "getBoundingClientRect", "const clamp = function", "const el = function"):
