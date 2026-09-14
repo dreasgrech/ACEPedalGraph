@@ -1,12 +1,15 @@
 # ACE PedalGraph
 
 HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle,
-brake, clutch and handbrake input. Version 0.3.0, for game version
+brake, clutch and handbrake input. Version 0.4.0, for game version
 0.9.1+release.6.
 
-This repository is the mod only. It is loaded by the `ACEUIModLoader` package
-and installed with that repo's tools; everything learned about the game and its
-UI engine is in `ACEGameInternals` (`docs/`). Clone all three side by side.
+This repository is the mod only. It is loaded by the `ACEUIModLoader` package,
+built on that package's shared library (`AceMods.panel` for drag and position
+persistence, `AceMods.loop` for the frame loop and sampler) and installed with
+that repo's tools; everything learned about the game and its UI engine is in
+`ACEGameInternals` (`docs/`). Clone all three side by side: the preview page
+and the tests load the library from `../ACEUIModLoader/src/`.
 
 ## Layout
 
@@ -16,9 +19,11 @@ UI engine is in `ACEGameInternals` (`docs/`). Clone all three side by side.
   (`PedalGraph.attach(root)` / `PedalGraph.detach(state)`). Reads the global
   `ModelCurrentCar` object (`gas_percent`, `brake_percent`, `clutch_percent`,
   `handbrake_percent`) and animates a fixed set of bars with CSS transforms.
-  Draggable; its position is stored as a fraction of the screen in the stock
-  HUD layout container (`HUD.elementModified`, persisted by the game) with
-  `localStorage` as fallback; hidden until placed; hides with the HUD. Writes
+  Everything that is not the graph comes from the library: `AceMods.panel`
+  makes it draggable and stores its position as a fraction of the screen in
+  the stock HUD layout container (`HUD.elementModified`, persisted by the
+  game) with `localStorage` as fallback, hidden until placed; `AceMods.loop`
+  runs the frame loop and the fixed-rate sampler. Hides with the HUD. Writes
   no colours or sizes, only transforms; every class name, timing and
   precision is a named constant.
 - `src/mod.js` - loader entry point: creates `<div id="pedalgraph">` inside the
@@ -50,7 +55,8 @@ page. Set `ACE_LOADER_DIR` if the loader repo is elsewhere.
 ## Preview outside the game
 
 Open `dev/preview.html` in Edge or Chrome (double-click, no server needed). It
-loads the real `pedalgraph.css` and `pedalgraph.js` from `src/` inside a 16:9
+loads the AceMods library from the sibling loader checkout, then the real
+`pedalgraph.css` and `pedalgraph.js` from `src/`, inside a 16:9
 stand-in for the game's HUD container and feeds them a fake `ModelCurrentCar`:
 
 - `W` throttle, `S` brake, `A` clutch, `Space` handbrake (with pedal travel
@@ -69,7 +75,7 @@ rendering still needs one in-game run, checked with the loader's
 
 `VERSION` at the repo root holds the semantic version. `pedalgraph.js` repeats
 it in `const VERSION`, logs it in its first line (`script loaded,
-version=0.3.0, source=acemods`), and exposes it as `PedalGraph.VERSION`;
+version=0.4.0, source=acemods`), and exposes it as `PedalGraph.VERSION`;
 `src/mod.json` repeats it for the loader. A test fails if they disagree or if
 this README stops mentioning the current version, so bumping means: edit
 `VERSION`, the constant, `mod.json`, mention it here, reinstall.
@@ -82,7 +88,9 @@ resolution reverse-engineered and replayed by the packer (padding), so the
 package no longer depends on luck; 0.2.2 position persisted through the
 stock HUD layout store (survives Escape/resume and game restarts), hidden
 until placed; 0.3.0 converted from a hud.html-override package to a loose
-folder loaded by `ACEUIModLoader`, so it coexists with other UI mods.
+folder loaded by `ACEUIModLoader`, so it coexists with other UI mods; 0.4.0
+drag, persistence, frame loop and helpers moved into the loader's shared
+library (`AceMods.*`), the widget is now only the graph.
 
 ## Code style (JavaScript)
 
@@ -110,24 +118,27 @@ python -m unittest discover -s tests -v
   lists exactly the files in `src/` with the widget before the entry script
   and overrides nothing; the widget has no per-frame geometry (SVG/canvas), no
   CSS in the script, no `var(--x, fallback)`, no magic numbers in the hot
-  path, balanced brackets, consistent constants, lifecycle cleanup; every
-  class name the script uses is styled and every trace has a colour; the
-  version agrees across `VERSION`, the script, `mod.json` and this README; the
-  preview page and harness load the real sources; and the JavaScript style
-  rules.
+  path, balanced brackets, consistent constants; the widget uses the library
+  for drag, persistence and the loop instead of its own code; every class
+  name the script uses is styled and every trace has a colour; the version
+  agrees across `VERSION`, the script, `mod.json` and this README; the preview
+  page and harness load the library in order and then the real sources; and
+  the JavaScript style rules.
 - `tests/test_widget_browser.py` - runs `tests/widget/harness.html` in a
   headless Edge or Chrome with a fake animation clock, fake `localStorage`,
-  fake `ModelCurrentCar` and fake HUD store: 20 behavioural cases covering
-  sampling, scrolling, clamping, drag, persistence and lifecycle. Skipped if
-  no browser is found (`ACE_BROWSER=<path>` overrides). The runner uses a
-  throwaway profile, kills the process tree on timeout and verifies no browser
-  process is left behind.
+  fake `ModelCurrentCar` and fake HUD store: 13 behavioural cases covering
+  sampling, scrolling, clamping, lifecycle and the integration with the
+  library's panel (drag saves under this mod's keys, restore in the loop).
+  The panel's own behaviour is tested in the loader repo. Skipped if no
+  browser is found (`ACE_BROWSER=<path>` overrides). The runner, shared from
+  `ACEUIModLoader/tools/headless.py`, uses a throwaway profile, kills the
+  process tree on timeout and verifies no browser process is left behind.
 
 ## Verifying in game
 
 The game writes UI `console.log` output into `Saved Games\ACE\Logs\log-*.txt`
 as `[gameface]` lines. Run `python ..\ACEUIModLoader\tools\check_ingame_log.py`
-after playing: `[AceMods] mod pedalgraph 0.3.0: loading` followed by
+after playing: `[AceMods] mod pedalgraph 0.4.0: loading` followed by
 `[PedalGraph] script loaded, ... source=acemods` means the loader served the
 mod, `sampling ok` once a minute means car data is flowing, and the position
 save/restore lines show persistence working.

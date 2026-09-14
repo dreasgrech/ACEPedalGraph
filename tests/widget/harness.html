@@ -10,7 +10,7 @@
   #results { white-space: pre; }
 </style>
 <script>
-// ---- test doubles, installed before the widget script loads --------------------------
+// ---- test doubles, installed before the library and the widget load ------------------
 
 // Manual animation-frame clock: tests call __clock.step(t) to run queued callbacks.
 window.__clock = {
@@ -45,8 +45,15 @@ window.__log = [];
 const __origLog = console.log.bind(console);
 console.log = function () { const a = Array.prototype.slice.call(arguments); window.__log.push(a.join(" ")); __origLog.apply(null, a); };
 </script>
+<!-- the AceMods library from the sibling ACEUIModLoader checkout, in load order (in game it is part of cohtml.js) -->
+<script src="../../../ACEUIModLoader/src/acemods.core.js"></script>
+<script src="../../../ACEUIModLoader/src/acemods.console.js"></script>
+<script src="../../../ACEUIModLoader/src/acemods.persist.js"></script>
+<script src="../../../ACEUIModLoader/src/acemods.panel.js"></script>
+<script src="../../../ACEUIModLoader/src/acemods.loop.js"></script>
+<script src="../../../ACEUIModLoader/src/acemods.loader.js"></script>
 <link rel="stylesheet" type="text/css" href="../../src/pedalgraph.css">
-<!-- same kind of script tag as hud.html: classic, so `PedalGraph` is a page-wide binding -->
+<!-- classic script, as the loader injects it: `PedalGraph` is a page-wide binding -->
 <script src="../../src/pedalgraph.js"></script>
 </head>
 <body>
@@ -71,10 +78,11 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     const clock = window.__clock;
     const center = document.getElementById("center");
 
-    t("module present, constants as expected, load logged", function () {
+    t("library present, module present, constants as expected, load logged", function () {
+        eq(typeof AceMods, "object", "AceMods library"); eq(typeof AceMods.panel, "object", "panel"); eq(typeof AceMods.loop, "object", "loop");
         eq(typeof PedalGraph, "object", "PedalGraph module");
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
-        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness") >= 0; }), "no load log");
+        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness, lib=" + AceMods.VERSION) >= 0; }), "no load log");
         eq(document.getElementById(PedalGraph.ROOT_ID), null, "harness must not carry the auto-boot root");
         eq(typeof PedalGraph.VERSION, "string", "version exported");
     });
@@ -91,13 +99,16 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     };
     grab();
 
-    t("attach builds 4 tracks x 2N bars, 4 levels, 4 readouts, one style tag, root class", function () {
+    t("attach builds 4 tracks x 2N bars, 4 levels, 4 readouts; panel and loop wired", function () {
         eq(tracks.length, 4, "tracks"); bars.forEach(function (b) { eq(b.length, 2 * N, "bars"); });
         eq(levels.length, 4, "levels"); eq(vals.length, 4, "vals");
         eq(getComputedStyle(root).position, "absolute", "stylesheet applied");
         ok(root.classList.contains("ace-pedalgraph"), "root class");
         eq(clock.queue.length, 1, "one animation frame requested");
         eq(state.root, root, "state carries the root");
+        eq(state.panel.root, root, "panel attached to the root"); eq(state.panel.hudId, PedalGraph.HUD_ELEMENT_ID); eq(state.panel.storageKey, PedalGraph.STORAGE_KEY);
+        eq(root.style.visibility, "hidden", "hidden until positioned");
+        ok(state.loop && state.loop.running, "loop running");
     });
 
     // trace order in the script: 0 clutch, 1 handbrake, 2 brake, 3 gas
@@ -159,11 +170,12 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         eq(el.textContent, "sentinel", "unchanged value must not rewrite the readout");
     });
 
-    t("no focused car: nothing renders, no throw", function () {
+    t("no focused car: nothing renders, sampler resets, no throw", function () {
         const before = tracks[3].style.transform;
         window.ModelCurrentCar.has_focused_car = false;
         clock.step(70000); clock.step(70016);
         eq(tracks[3].style.transform, before, "strip must not move");
+        eq(state.sampler.lastSampleAt, 0, "sampler reset");
         eq(PedalGraph.readModel(), null, "readModel null without focused car");
         window.ModelCurrentCar = null;
         clock.step(70032);
@@ -174,14 +186,14 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     });
 
     t("hidden HUD skips drawing but keeps recording", function () {
-        document.body.classList.add("hide-hud");
+        document.body.classList.add(AceMods.HUD_HIDDEN_CLASS);
         const before = tracks[3].style.transform;
         const headBefore = state.head;
         clock.step(80000);
         clock.step(80000 + SAMPLE_MS * 3);
         eq(tracks[3].style.transform, before, "no draw while hidden");
         ok(state.head > headBefore, "history still recording");
-        document.body.classList.remove("hide-hud");
+        document.body.classList.remove(AceMods.HUD_HIDDEN_CLASS);
         clock.step(80000 + SAMPLE_MS * 3 + 1);
         ok(tracks[3].style.transform !== before, "draws again when visible");
     });
@@ -189,173 +201,50 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
     const mouse = function (type, x, y, target) {
         (target || window).dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
     };
-
-    t("drag moves the widget, clamps to the container and saves a fractional position", function () {
-        root.style.left = "100px"; root.style.top = "100px"; root.style.bottom = "auto";
-        const r = root.getBoundingClientRect();
-        mouse("mousedown", r.left + 10, r.top + 10, root);
-        ok(root.classList.contains("dragging"));
-        mouse("mousemove", r.left + 210, r.top + 60);
-        eq(root.style.left, "300px", "left after drag"); eq(root.style.top, "150px", "top after drag");
-        mouse("mousemove", 99999, 99999);
-        const c = center.getBoundingClientRect();
-        eq(parseInt(root.style.left, 10), Math.round(c.width - root.offsetWidth), "clamped right");
-        eq(parseInt(root.style.top, 10), Math.round(c.height - root.offsetHeight), "clamped bottom");
-        mouse("mousemove", -99999, -99999);
-        eq(root.style.left, "0px"); eq(root.style.top, "0px");
-        mouse("mousemove", r.left + 410, r.top + 260);
-        mouse("mouseup", 0, 0);
-        ok(!root.classList.contains("dragging"));
-        const saved = JSON.parse(localStorage.getItem(PedalGraph.STORAGE_KEY));
-        near(saved.fx, 500 / c.width, 0.001, "fx"); near(saved.fy, 350 / c.height, 0.001, "fy");
-        eq(saved.x, "500px", "pixel x kept for the stock layout code"); eq(saved.y, "350px", "pixel y");
-    });
-
-    // stand-in for the stock HUD's layout store (window.HUD in game)
     const makeHud = function (elements) {
         const hud = { currentLayout: "default", StoredData: { lastLayout: "default", layouts: { default: { elements: elements || {} } } } };
         hud.elementModified = function (id, props) { hud.StoredData.layouts.default.elements[id] = props; };
         return hud;
     };
-    const HUD_ID = PedalGraph.HUD_ELEMENT_ID;
-    const WAIT = PedalGraph.RESTORE_WAIT_MS;
 
-    t("drag end also writes the stock HUD layout store when it exists", function () {
+    t("drag saves under PedalGraph's keys in localStorage and the stock HUD store", function () {
         window.HUD = makeHud();
+        root.style.left = "100px"; root.style.top = "100px"; root.style.bottom = "auto";
         const r = root.getBoundingClientRect();
-        mouse("mousedown", r.left + 5, r.top + 5, root);
-        mouse("mousemove", r.left + 5 + 20, r.top + 5 + 10);
-        mouse("mouseup", 0, 0);
-        const entry = window.HUD.StoredData.layouts.default.elements[HUD_ID];
-        ok(entry, "no entry written to HUD store");
+        mouse("mousedown", r.left + 10, r.top + 10, root);
+        ok(root.classList.contains("dragging"), "dragging class for the stylesheet");
+        mouse("mousemove", r.left + 210, r.top + 60); mouse("mouseup", 0, 0);
+        eq(root.style.left, "300px", "moved");
         const c = center.getBoundingClientRect();
-        near(entry.fx, 520 / c.width, 0.001, "hud fx"); near(entry.fy, 360 / c.height, 0.001, "hud fy");
-        eq(entry.x, "520px", "hud x"); eq(entry.y, "360px", "hud y");
-        ok(window.__log.some(function (l) { return l.indexOf("position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged");
+        const saved = JSON.parse(localStorage.getItem(PedalGraph.STORAGE_KEY));
+        near(saved.fx, 300 / c.width, 0.001, "fx"); eq(saved.x, "300px", "pixel form kept");
+        const entry = window.HUD.StoredData.layouts.default.elements[PedalGraph.HUD_ELEMENT_ID];
+        ok(entry && entry.x === "300px", "HUD store entry under hud_pedalgraph");
+        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged with the mod prefix");
+        window.HUD = null; localStorage.clear();
     });
 
-    t("localStorage position is applied synchronously at attach, before any frame", function () {
-        window.HUD = null;
-        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ fx: 0.2, fy: 0.3 }));
-        const root2 = document.createElement("div");
-        center.appendChild(root2);
-        const state2 = PedalGraph.attach(root2);
-        const c = center.getBoundingClientRect();
-        eq(root2.style.left, Math.round(0.2 * c.width) + "px", "placed immediately");
-        ok(!root2.classList.contains("pg-positioning"), "visible right away");
-        ok(!state2.restored, "HUD store still has the last word");
-        PedalGraph.detach(state2); root2.remove();
-        localStorage.clear();
-    });
-
-    t("nothing stored: hidden until the HUD store has been consulted, then shown at default", function () {
-        localStorage.clear();
-        window.HUD = null;
-        const root2 = document.createElement("div");
-        center.appendChild(root2);
-        const state2 = PedalGraph.attach(root2);
-        ok(root2.classList.contains("pg-positioning"), "hidden while positioning");
-        eq(root2.style.left, "", "nothing applied synchronously");
+    t("position is restored from the HUD store inside the frame loop and the widget is then shown", function () {
         window.HUD = makeHud({});
-        clock.step(100000);
-        eq(root2.style.left, "", "stays at stylesheet default");
-        ok(state2.restored, "settled as soon as the HUD store was available");
-        ok(!root2.classList.contains("pg-positioning"), "shown");
-        PedalGraph.detach(state2); root2.remove();
-    });
-
-    t("HUD store entry wins and is applied in the frame loop", function () {
-        localStorage.clear();
-        window.HUD = makeHud({});
-        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.25, fy: 0.5 };
+        window.HUD.StoredData.layouts.default.elements[PedalGraph.HUD_ELEMENT_ID] = { fx: 0.25, fy: 0.5 };
         const root2 = document.createElement("div");
         center.appendChild(root2);
         const state2 = PedalGraph.attach(root2);
-        eq(root2.style.left, "", "nothing applied synchronously without localStorage");
+        eq(root2.style.visibility, "hidden", "hidden until placed"); eq(root2.style.left, "", "nothing applied synchronously");
         clock.step(105000);
         const c = center.getBoundingClientRect();
-        eq(root2.style.left, Math.round(0.25 * c.width) + "px", "restored left from HUD store");
-        eq(root2.style.top, Math.round(0.5 * c.height) + "px", "restored top from HUD store");
-        ok(state2.restored && !root2.classList.contains("pg-positioning"), "settled and shown");
-        PedalGraph.detach(state2); root2.remove();
+        eq(root2.style.left, Math.round(0.25 * c.width) + "px", "restored left"); eq(root2.style.top, Math.round(0.5 * c.height) + "px", "restored top");
+        ok(state2.panel.restored, "settled"); eq(root2.style.visibility, "", "shown");
+        PedalGraph.detach(state2); root2.remove(); window.HUD = null;
     });
 
-    t("HUD store arriving late is picked up within the wait window", function () {
-        localStorage.clear();
-        window.HUD = null;
-        const root3 = document.createElement("div");
-        center.appendChild(root3);
-        const state3 = PedalGraph.attach(root3);
-        clock.step(110000); clock.step(110016);
-        eq(root3.style.left, "", "still default while nothing is stored");
-        ok(root3.classList.contains("pg-positioning"), "still hidden");
-        window.HUD = makeHud({});
-        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.1, fy: 0.2 };
-        clock.step(110032);
-        const c = center.getBoundingClientRect();
-        eq(root3.style.left, Math.round(0.1 * c.width) + "px", "restored once the HUD store appeared");
-        PedalGraph.detach(state3); root3.remove();
-    });
-
-    t("no HUD object at all: localStorage fallback after the wait window", function () {
-        window.HUD = null;
-        localStorage.clear();
-        const root4 = document.createElement("div");
-        center.appendChild(root4);
-        const state4 = PedalGraph.attach(root4);
-        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ fx: 0.3, fy: 0.4 }));  // saved later in the session
-        clock.step(120000);
-        clock.step(120000 + WAIT - 1);
-        eq(root4.style.left, "", "not yet: waiting for a HUD object");
-        clock.step(120000 + WAIT);
-        const c = center.getBoundingClientRect();
-        eq(root4.style.left, Math.round(0.3 * c.width) + "px", "fallback applied after the wait");
-        ok(state4.restored, "marked restored");
-        PedalGraph.detach(state4); root4.remove();
-    });
-
-    t("legacy pixel-only positions are ignored", function () {
-        window.HUD = makeHud({});
-        localStorage.setItem(PedalGraph.STORAGE_KEY, JSON.stringify({ left: "5px", top: "5px" }));
-        const root5 = document.createElement("div");
-        center.appendChild(root5);
-        const state5 = PedalGraph.attach(root5);
-        eq(root5.style.left, "", "nothing applied synchronously");
-        clock.step(130000);
-        eq(root5.style.left, "", "no left applied");
-        ok(state5.restored, "gave up cleanly");
-        PedalGraph.detach(state5); root5.remove();
-        localStorage.clear();
-    });
-
-    t("restore waits for layout: a zero-size container defers it", function () {
-        window.HUD = makeHud({});
-        window.HUD.StoredData.layouts.default.elements[HUD_ID] = { fx: 0.5, fy: 0.5 };
-        const hidden = document.createElement("div");
-        hidden.className = "absolutecenter"; hidden.style.display = "none";
-        document.body.appendChild(hidden);
-        const root6 = document.createElement("div");
-        hidden.appendChild(root6);
-        const state6 = PedalGraph.attach(root6);
-        clock.step(140000); clock.step(140000 + WAIT + 100);
-        eq(root6.style.left, "", "nothing applied while the container has no size");
-        ok(!state6.restored, "still pending");
-        hidden.style.display = "block";
-        clock.step(140000 + WAIT + 200);
-        const c = hidden.getBoundingClientRect();
-        eq(root6.style.left, Math.round(0.5 * c.width) + "px", "applied once laid out");
-        ok(state6.restored, "restored");
-        PedalGraph.detach(state6); hidden.remove();
-        window.HUD = null;
-    });
-
-    t("detach cancels the frame loop and releases listeners; re-attach reuses the markup", function () {
+    t("detach stops the loop and releases listeners; re-attach reuses the markup", function () {
         const barCount = root.querySelectorAll(".pg-bar").length;
         const cancelledBefore = clock.cancelled;
         PedalGraph.detach(state);
         eq(clock.cancelled, cancelledBefore + 1, "frame cancelled");
         eq(clock.queue.length, 0, "queue empty");
-        eq(state.rafId, 0, "rafId cleared");
+        eq(state.loop.rafId, 0, "rafId cleared"); eq(state.loop.running, false, "loop stopped");
         const left = root.style.left;
         mouse("mousedown", 0, 0, root); mouse("mousemove", 700, 700); mouse("mouseup", 0, 0);
         eq(root.style.left, left, "listeners released");
