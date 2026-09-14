@@ -5,7 +5,7 @@
 <title>PedalGraph preview</title>
 <!--
   Out-of-game preview. Loads the ACEUIModLoader library from the sibling checkout of the loader
-  repo, then the real stylesheet and script from src/, with a fake
+  repo, then the real stylesheet and script from pedalgraph/, with a fake
   ModelCurrentCar you drive from the keyboard, inside a 16:9 stand-in for the
   game's HUD container. Open this file directly in Edge or Chrome:
 
@@ -15,13 +15,8 @@
   widget, and the game's font (a system font stands in for --font-family-main).
 -->
 <!-- the ACEUIModLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.core.js"></script>
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.console.js"></script>
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.persist.js"></script>
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.panel.js"></script>
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.loop.js"></script>
-<script src="../../ACEUIModLoader/src/ACEUIModLoader.loader.js"></script>
-<link rel="stylesheet" type="text/css" href="../src/pedalgraph.css">
+<script src="../../ACEUIModLoader/tests/lib/lib.js"></script>
+<link rel="stylesheet" type="text/css" href="../pedalgraph/pedalgraph.css">
 <style>
     :root { --font-family-main: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; }
     html, body { margin: 0; height: 100%; background: #101214; color: #ddd; font-family: var(--font-family-main); }
@@ -197,7 +192,7 @@ const Preview = (function () {
     return { wire: wire, state: state };
 }());
 </script>
-<script defer src="../src/pedalgraph.js"></script>
+<script defer src="../pedalgraph/pedalgraph.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () { Preview.wire(); });
 </script>

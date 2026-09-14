@@ -9,52 +9,18 @@
   .absolutecenter { position: relative; width: 1600px; height: 900px; overflow: hidden; }
   #results { white-space: pre; }
 </style>
+<!-- shared test doubles (fake frame clock, in-memory localStorage, console capture) from the loader repo -->
+<script src="../../../ACEUIModLoader/tests/lib/doubles.js"></script>
 <script>
-// ---- test doubles, installed before the library and the widget load ------------------
-
-// Manual animation-frame clock: tests call __clock.step(t) to run queued callbacks.
-window.__clock = {
-    queue: [], nextId: 1, cancelled: 0,
-    step: function (t) {
-        const run = this.queue; this.queue = [];
-        run.forEach(function (q) { q[1](t); });
-    }
-};
-window.requestAnimationFrame = function (cb) { const id = window.__clock.nextId++; window.__clock.queue.push([id, cb]); return id; };
-window.cancelAnimationFrame = function (id) {
-    const n = window.__clock.queue.length;
-    window.__clock.queue = window.__clock.queue.filter(function (q) { return q[0] !== id; });
-    if (window.__clock.queue.length !== n) { window.__clock.cancelled++; }
-};
-
-// In-memory localStorage so file:// origin quirks cannot affect the tests.
-const __store = {};
-Object.defineProperty(window, "localStorage", { value: {
-    getItem: function (k) { return (k in __store) ? __store[k] : null; },
-    setItem: function (k, v) { __store[k] = String(v); },
-    removeItem: function (k) { delete __store[k]; },
-    clear: function () { Object.keys(__store).forEach(function (k) { delete __store[k]; }); }
-}});
-
 // Fake car model, mutable by tests.
 window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percent: 0.25, clutch_percent: 0, handbrake_percent: 1 };
 window.PEDALGRAPH_SOURCE = "harness";
-
-// Capture console output so it can be asserted on and shown in the dump.
-window.__log = [];
-const __origLog = console.log.bind(console);
-console.log = function () { const a = Array.prototype.slice.call(arguments); window.__log.push(a.join(" ")); __origLog.apply(null, a); };
 </script>
 <!-- the ACEUIModLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.core.js"></script>
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.console.js"></script>
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.persist.js"></script>
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.panel.js"></script>
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.loop.js"></script>
-<script src="../../../ACEUIModLoader/src/ACEUIModLoader.loader.js"></script>
-<link rel="stylesheet" type="text/css" href="../../src/pedalgraph.css">
+<script src="../../../ACEUIModLoader/tests/lib/lib.js"></script>
+<link rel="stylesheet" type="text/css" href="../../pedalgraph/pedalgraph.css">
 <!-- classic script, as the loader injects it: `PedalGraph` is a page-wide binding -->
-<script src="../../src/pedalgraph.js"></script>
+<script src="../../pedalgraph/pedalgraph.js"></script>
 </head>
 <body>
 <div class="absolutecenter" id="center"></div>
@@ -82,7 +48,9 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         eq(typeof ACEUIModLoader, "object", "ACEUIModLoader library"); eq(typeof ACEUIModLoader.panel, "object", "panel"); eq(typeof ACEUIModLoader.loop, "object", "loop");
         eq(typeof PedalGraph, "object", "PedalGraph module");
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
-        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] script loaded, version=" + PedalGraph.VERSION + ", source=harness, lib=" + ACEUIModLoader.VERSION) >= 0; }), "no load log");
+        eq(PedalGraph.VERSION, ACEUIModLoader.loader.DEV_VERSION, "version comes from the loader"); eq(PedalGraph.LOG_PREFIX, "[pedalgraph]");
+        eq(PedalGraph.HUD_ELEMENT_ID, "hud_pedalgraph"); eq(PedalGraph.STORAGE_KEY, "acepedalgraph.pos"); eq(PedalGraph.ROOT_ID, "pedalgraph");
+        ok(window.__log.some(function (l) { return l.indexOf(PedalGraph.LOG_PREFIX + " script loaded, version=" + PedalGraph.VERSION + ", source=harness, lib=" + ACEUIModLoader.VERSION) >= 0; }), "no load log");
         eq(document.getElementById(PedalGraph.ROOT_ID), null, "harness must not carry the auto-boot root");
         eq(typeof PedalGraph.VERSION, "string", "version exported");
     });
@@ -220,7 +188,7 @@ console.log = function () { const a = Array.prototype.slice.call(arguments); win
         near(saved.fx, 300 / c.width, 0.001, "fx"); eq(saved.x, "300px", "pixel form kept");
         const entry = window.HUD.StoredData.layouts.default.elements[PedalGraph.HUD_ELEMENT_ID];
         ok(entry && entry.x === "300px", "HUD store entry under hud_pedalgraph");
-        ok(window.__log.some(function (l) { return l.indexOf("[PedalGraph] position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged with the mod prefix");
+        ok(window.__log.some(function (l) { return l.indexOf(PedalGraph.LOG_PREFIX + " position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged with the mod prefix");
         window.HUD = null; localStorage.clear();
     });
 

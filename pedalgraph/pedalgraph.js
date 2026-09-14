@@ -38,11 +38,11 @@
  */
 const PedalGraph = (function () {
 
-    /** Mod version -- keep in step with the VERSION file and mod.json. */
-    const VERSION = "0.4.0";
-
-    /** Prefix of every log line; the game log and the tests grep for it. */
-    const LOG_PREFIX = "[PedalGraph]";
+    /**
+     * Identity from the loader: name, version (mod.json), title, root, a prefixed
+     * logger and the storage keys, so none of it is repeated here.
+     */
+    const me = ACEUIModLoader.mod("pedalgraph");
 
     /** History resolution, independent of frame rate. */
     const SAMPLE_HZ = 50;
@@ -61,14 +61,11 @@ const PedalGraph = (function () {
     const SHIFT_DECIMALS = 4;
     const LAYOUT_DECIMALS = 4;
     const LOG_DECIMALS = 2;
+    /** The strip shift is a percentage of the strip's own width. */
+    const PERCENT = 100;
     /** Horizontal reference lines, as percent of the graph height from the top. */
     const GRID_LINES_PCT = [25, 50, 75];
 
-    /** Keys under which ACEUIModLoader.panel persists the position (stock HUD store, localStorage). */
-    const HUD_ELEMENT_ID = "hud_pedalgraph";
-    const STORAGE_KEY = "acepedalgraph.pos";
-    /** Element id of the widget's root (mod.js creates it; the preview page carries one). */
-    const ROOT_ID = "pedalgraph";
 
     /** Class names shared with pedalgraph.css. */
     const CLASS = {
@@ -117,7 +114,7 @@ const PedalGraph = (function () {
     const close = ACEUIModLoader.close;
     const toArray = ACEUIModLoader.toArray;
     const percentText = ACEUIModLoader.percentText;
-    const log = ACEUIModLoader.logger(LOG_PREFIX);
+    const log = me.log;
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -254,7 +251,7 @@ const PedalGraph = (function () {
         const incoming = (state.head + 1) % N;
         // bar `head` sits at the right edge when the strip is shifted by (head+1) bars;
         // advancing by `frac` of a bar slides the incoming bar into view continuously
-        const shift = shiftTransform(-((state.head + 1 + frac) / STRIP_BARS) * 100);
+        const shift = shiftTransform(-((state.head + 1 + frac) / STRIP_BARS) * PERCENT);
         const slotAdvanced = incoming !== state.lastIncoming;
 
         state.tracks.forEach(function (track, t) {
@@ -329,7 +326,7 @@ const PedalGraph = (function () {
     const attach = function (root) {
         const state = create(root);
 
-        state.panel = ACEUIModLoader.panel.attach(root, { hudId: HUD_ELEMENT_ID, storageKey: STORAGE_KEY, log: log });
+        state.panel = ACEUIModLoader.panel.attach(root, { hudId: me.hudId, storageKey: me.storageKey, log: log });
         state.loop = ACEUIModLoader.loop.start(function (now) { tick(state, now); });
         log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz");
 
@@ -342,17 +339,17 @@ const PedalGraph = (function () {
         ACEUIModLoader.panel.detach(state.panel);
     };
 
-    log("script loaded, version=" + VERSION + ", source=" + (window.PEDALGRAPH_SOURCE || "ACEUIModLoader") + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
+    log("script loaded, version=" + me.version + ", source=" + (window.PEDALGRAPH_SOURCE || "ACEUIModLoader") + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
 
     return {
-        VERSION: VERSION,
-        LOG_PREFIX: LOG_PREFIX,
+        VERSION: me.version,
+        LOG_PREFIX: me.prefix,
         SAMPLE_HZ: SAMPLE_HZ,
         WINDOW_S: WINDOW_S,
         N: N,
-        STORAGE_KEY: STORAGE_KEY,
-        HUD_ELEMENT_ID: HUD_ELEMENT_ID,
-        ROOT_ID: ROOT_ID,
+        STORAGE_KEY: me.storageKey,
+        HUD_ELEMENT_ID: me.hudId,
+        ROOT_ID: me.name,
         CLASS: CLASS,
         TRACES: TRACES,
         create: create,
@@ -365,7 +362,7 @@ const PedalGraph = (function () {
     };
 }());
 
-/** Boot for pages that carry `<div id="pedalgraph">` themselves (the preview page); in game mod.js attaches. */
+/** Boot for pages that carry `<div id="pedalgraph">` themselves (the preview page); in game the loader creates it. */
 (function () {
     const boot = function () {
         const root = document.getElementById(PedalGraph.ROOT_ID);
