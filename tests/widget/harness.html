@@ -201,7 +201,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         PedalGraph.detach(state2); root2.remove(); window.HUD = null;
     });
 
-    t("attract mode: the checkbox drives the widget with scripted values, persists, and survives re-attach", function () {
+    t("attract mode: the checkbox and the settings window drive the same value, persisted and restored", function () {
         window.ModelCurrentCar.has_focused_car = false;              // no real car
         const toggle = root.querySelector(".pg-attract");
         const box = root.querySelector(".pg-attract-box");
@@ -212,12 +212,16 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(demo.length, PedalGraph.TRACES.length, "one value per trace"); ok(demo.every(function (x) { return x >= 0 && x <= 1; }), "clamped");
         toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         eq(state.attract, true, "clicking turned attract on"); ok(box.classList.contains("pg-on"), "box filled");
-        eq(localStorage.getItem("acepedalgraph.attract"), "true", "persisted");
+        eq(ACEUIModLoader.settings.get("pedalgraph", "attract"), true, "persisted through the settings store");
         clock.step(80000); clock.step(80100);                        // it now renders demo data with no car
         eq(root.querySelector(".pg-nodata").textContent, "", "no-data message cleared while demoing");
         PedalGraph.detach(state); state = PedalGraph.attach(root);   // re-attach restores it from storage
         eq(state.attract, true, "restored on"); ok(root.querySelector(".pg-attract-box").classList.contains("pg-on"), "box restored filled");
-        PedalGraph.attract(false); eq(state.attract, false, "console toggle works too");
+        ACEUIModLoader.settings.set("pedalgraph", "attract", false);
+        eq(state.attract, false, "moving it in the settings window moves the widget");
+        ok(!root.querySelector(".pg-attract-box").classList.contains("pg-on"), "and the checkbox follows");
+        PedalGraph.attract(true); eq(ACEUIModLoader.settings.get("pedalgraph", "attract"), true, "and the console toggle writes back");
+        PedalGraph.attract(false);
         window.ModelCurrentCar.has_focused_car = true;
     });
 

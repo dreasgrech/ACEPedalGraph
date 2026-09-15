@@ -120,12 +120,34 @@ const PedalGraph = (function () {
     const persist = ACEUIModLoader.persist;
     const log = me.log;
 
-    /** Attract mode: the widget drives itself with scripted pedal inputs (same as dev/preview.html). */
-    const ATTRACT_KEY = me.key("attract");
+    /**
+     * Attract mode: the widget drives itself with scripted pedal inputs (same as
+     * dev/preview.html). It is a declared setting, so the loader stores it, draws it in
+     * this mod's settings window and lists the mod in the app drawer; the checkbox on the
+     * widget is a second way to reach the same value.
+     */
+    const ATTRACT_KEY = me.key("attract");      // where it lived before it was a setting
     /** Seconds for one scripted lap of the demo. */
     const ATTRACT_CYCLE_S = 14;
     /** The live attached state, so the demo can be toggled from the dev console: PedalGraph.attract(true). */
     let current = null;
+
+    /** Seeded from the old key, so a widget left in attract mode does not silently reset. */
+    const attractWas = function () {
+        return Boolean(persist.readLocal(ATTRACT_KEY));
+    };
+
+    const options = ACEUIModLoader.settings
+        ? ACEUIModLoader.settings.define(me.name, [
+            {
+                key: "attract",
+                type: "toggle",
+                label: "Attract mode",
+                value: attractWas(),
+                hint: "scripted inputs, for recording without driving"
+            }
+        ])
+        : { attract: attractWas() };
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -227,7 +249,8 @@ const PedalGraph = (function () {
             noData: root.querySelector("." + CLASS.noData),
             attractToggle: root.querySelector("." + CLASS.attract),
             attractBox: root.querySelector("." + CLASS.attractBox),
-            attractHandler: null,
+            bag: ACEUIModLoader.dom.listeners(),
+            unsubscribeSettings: null,
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
             sampler: ACEUIModLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS),
@@ -320,13 +343,18 @@ const PedalGraph = (function () {
         return TRACES.map(function (trace) { return values[trace.key]; });
     };
 
-    /** Turn the self-running demo on or off, reflect it on the toggle, and remember it. */
+    /** Turn the self-running demo on or off, reflect it on the checkbox, and remember it. */
     const setAttract = function (state, on) {
         state.attract = Boolean(on);
 
         if (state.attractBox) { state.attractBox.classList.toggle(CLASS.attractOn, state.attract); }
 
-        persist.writeLocal(ATTRACT_KEY, state.attract);
+        if (ACEUIModLoader.settings) {
+            ACEUIModLoader.settings.set(me.name, "attract", state.attract);
+        } else {
+            persist.writeLocal(ATTRACT_KEY, state.attract);
+        }
+
         log("attract " + (state.attract ? "on" : "off"));
 
         return state.attract;
@@ -426,12 +454,18 @@ const PedalGraph = (function () {
     const attach = function (root) {
         const state = create(root);
 
-        state.attract = Boolean(persist.readLocal(ATTRACT_KEY));
+        state.attract = Boolean(options.attract);
 
         if (state.attractToggle) {
             state.attractBox.classList.toggle(CLASS.attractOn, state.attract);
-            state.attractHandler = function () { setAttract(state, !state.attract); };
-            state.attractToggle.addEventListener("click", state.attractHandler);
+            state.bag.on(state.attractToggle, "click", function () { setAttract(state, !state.attract); });
+        }
+
+        // the same switch lives in the settings window; follow it when it is moved there
+        if (ACEUIModLoader.settings) {
+            state.unsubscribeSettings = ACEUIModLoader.settings.onChange(me.name, function (key, value) {
+                if (key === "attract" && value !== state.attract) { setAttract(state, value); }
+            });
         }
 
         state.panel = ACEUIModLoader.panel.attach(root, { hudId: me.hudId, storageKey: me.storageKey, log: log });
@@ -446,10 +480,11 @@ const PedalGraph = (function () {
     const detach = function (state) {
         ACEUIModLoader.loop.stop(state.loop);
         ACEUIModLoader.panel.detach(state.panel);
+        state.bag.off();
 
-        if (state.attractToggle && state.attractHandler) {
-            state.attractToggle.removeEventListener("click", state.attractHandler);
-            state.attractHandler = null;
+        if (state.unsubscribeSettings) {
+            state.unsubscribeSettings();
+            state.unsubscribeSettings = null;
         }
 
         if (current === state) { current = null; }
