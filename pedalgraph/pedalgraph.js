@@ -478,4 +478,4 @@ const PedalGraph = (function () {
 }());
 
 /* Attach to #pedalgraph: the loader creates it in game, the preview page carries it. */
-ACEUIModLoader.mod("pedalgraph").mount(PedalGraph.attach);
+ACEUIModLoader.mod("pedalgraph").mount(PedalGraph.attach, PedalGraph.detach);
