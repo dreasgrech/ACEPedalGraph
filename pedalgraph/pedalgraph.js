@@ -416,12 +416,14 @@ const PedalGraph = (function () {
         }
 
         // history at the fixed rate (catches up after short hitches, restarts after a stall)
-        const frac = ACEUIModLoader.loop.advance(state.sampler, now, function () { commitSample(state, v); });
+        const frac = ACEUIModLoader.loop.advance(state.sampler, now, function () {
+            ACEUIModLoader.section("commit sample", function () { commitSample(state, v); });
+        });
 
         // nothing to draw while the HUD is toggled off; history keeps recording
         if (ACEUIModLoader.hudHidden()) { return; }
 
-        renderFrame(state, v, frac);
+        ACEUIModLoader.section("render", function () { renderFrame(state, v, frac); });
 
         if (state.noData.textContent) { state.noData.textContent = ""; }
 
