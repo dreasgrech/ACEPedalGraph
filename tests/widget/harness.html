@@ -45,7 +45,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
         eq(me.version, ACEUIModLoader.loader.DEV_VERSION, "version comes from the loader"); eq(me.prefix, "[pedalgraph]");
         eq(me.hudId, "hud_pedalgraph"); eq(me.storageKey, "acepedalgraph.pos");
-        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version=" + me.version + ", lib=" + ACEUIModLoader.VERSION) >= 0; }), "no load log");
+        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version " + me.version + ", library " + ACEUIModLoader.VERSION) >= 0; }), "the library logs the script-loaded line for every mod");
         eq(document.getElementById(me.name), null, "harness must not carry the auto-mount root");
         eq(typeof PedalGraph.VERSION, "undefined", "identity is the loader's, not re-exported");
     });
@@ -69,9 +69,9 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(root.classList.contains("ace-pedalgraph"), "root class");
         eq(clock.queue.length, 1, "one animation frame requested");
         eq(state.root, root, "state carries the root");
-        eq(state.panel.root, root, "panel attached to the root"); eq(state.panel.hudId, me.hudId); eq(state.panel.storageKey, me.storageKey);
+        eq(state.ui.panel.root, root, "panel attached to the root"); eq(state.ui.panel.hudId, me.hudId); eq(state.ui.panel.storageKey, me.storageKey);
         eq(root.style.visibility, "hidden", "hidden until positioned");
-        ok(state.loop && state.loop.running, "loop running");
+        ok(state.ui.loop && state.ui.loop.running, "loop running");
     });
 
     // trace order in the script: 0 clutch, 1 handbrake, 2 brake, 3 gas
@@ -197,7 +197,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         clock.step(105000);
         const c = center.getBoundingClientRect();
         eq(root2.style.left, Math.round(0.25 * c.width) + "px", "restored left"); eq(root2.style.top, Math.round(0.5 * c.height) + "px", "restored top");
-        ok(state2.panel.restored, "settled"); eq(root2.style.visibility, "", "shown");
+        ok(state2.ui.panel.restored, "settled"); eq(root2.style.visibility, "", "shown");
         PedalGraph.detach(state2); root2.remove(); window.HUD = null;
     });
 
@@ -231,7 +231,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         PedalGraph.detach(state);
         eq(clock.cancelled, cancelledBefore + 1, "frame cancelled");
         eq(clock.queue.length, 0, "queue empty");
-        eq(state.loop.rafId, 0, "rafId cleared"); eq(state.loop.running, false, "loop stopped");
+        eq(state.ui.loop.rafId, 0, "rafId cleared"); eq(state.ui.loop.running, false, "loop stopped");
         const left = root.style.left;
         mouse("mousedown", 0, 0, root); mouse("mousemove", 700, 700); mouse("mouseup", 0, 0);
         eq(root.style.left, left, "listeners released");

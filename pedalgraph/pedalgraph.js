@@ -132,22 +132,16 @@ const PedalGraph = (function () {
     /** The live attached state, so the demo can be toggled from the dev console: PedalGraph.attract(true). */
     let current = null;
 
-    /** Seeded from the old key, so a widget left in attract mode does not silently reset. */
-    const attractWas = function () {
-        return Boolean(persist.readLocal(ATTRACT_KEY));
-    };
-
-    const options = ACEUIModLoader.settings
-        ? ACEUIModLoader.settings.define(me.name, [
-            {
-                key: "attract",
-                type: "toggle",
-                label: "Attract mode",
-                value: attractWas(),
-                hint: "scripted inputs, for recording without driving"
-            }
-        ])
-        : { attract: attractWas() };
+    const options = ACEUIModLoader.settings.define(me.name, [
+        {
+            key: "attract",
+            type: "toggle",
+            label: "Attract mode",
+            /** Seeded from the old key, so a widget left in attract mode does not reset. */
+            value: Boolean(me.recall("attract", false)),
+            hint: "scripted inputs, for recording without driving"
+        }
+    ]);
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -258,8 +252,7 @@ const PedalGraph = (function () {
             lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
             attract: false,             // self-running demo (persisted, toggled from the dev console)
-            panel: null,                // ACEUIModLoader.panel state (drag + position)
-            loop: null                  // ACEUIModLoader.loop handle
+            ui: null                    // me.panel handle: the panel and its frame loop
         };
     };
 
@@ -349,12 +342,7 @@ const PedalGraph = (function () {
 
         if (state.attractBox) { state.attractBox.classList.toggle(CLASS.attractOn, state.attract); }
 
-        if (ACEUIModLoader.settings) {
-            ACEUIModLoader.settings.set(me.name, "attract", state.attract);
-        } else {
-            persist.writeLocal(ATTRACT_KEY, state.attract);
-        }
-
+        ACEUIModLoader.settings.set(me.name, "attract", state.attract);
         log("attract " + (state.attract ? "on" : "off"));
 
         return state.attract;
@@ -411,10 +399,8 @@ const PedalGraph = (function () {
             + " clu=" + v[CLUTCH].toFixed(LOG_DECIMALS) + " hbk=" + v[HANDBRAKE].toFixed(LOG_DECIMALS));
     };
 
-    /** One animation frame: settle the position, commit due samples, then draw. */
+    /** One animation frame: commit due samples, then draw. */
     const tick = function (state, now) {
-        ACEUIModLoader.panel.update(state.panel, now);
-
         const v = state.attract ? attractValues(now) : readModel();
         const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
@@ -462,14 +448,11 @@ const PedalGraph = (function () {
         }
 
         // the same switch lives in the settings window; follow it when it is moved there
-        if (ACEUIModLoader.settings) {
-            state.unsubscribeSettings = ACEUIModLoader.settings.onChange(me.name, function (key, value) {
-                if (key === "attract" && value !== state.attract) { setAttract(state, value); }
-            });
-        }
+        state.unsubscribeSettings = ACEUIModLoader.settings.onChange(me.name, function (key, value) {
+            if (key === "attract" && value !== state.attract) { setAttract(state, value); }
+        });
 
-        state.panel = ACEUIModLoader.panel.attach(root, { hudId: me.hudId, storageKey: me.storageKey, log: log });
-        state.loop = ACEUIModLoader.loop.start(function (now) { tick(state, now); });
+        state.ui = me.panel(root, function (now) { tick(state, now); });
         current = state;
         log("widget attached, bars per trace=" + N + ", history rate=" + SAMPLE_HZ + " Hz, attract " + (state.attract ? "on" : "off"));
 
@@ -478,8 +461,7 @@ const PedalGraph = (function () {
 
     /** Stop the loop and release the listeners. The DOM is left in place. */
     const detach = function (state) {
-        ACEUIModLoader.loop.stop(state.loop);
-        ACEUIModLoader.panel.detach(state.panel);
+        state.ui.stop();
         state.bag.off();
 
         if (state.unsubscribeSettings) {
@@ -489,8 +471,6 @@ const PedalGraph = (function () {
 
         if (current === state) { current = null; }
     };
-
-    log("script loaded, version=" + me.version + ", lib=" + ACEUIModLoader.VERSION + ", url=" + location.href);
 
     return {
         SAMPLE_HZ: SAMPLE_HZ,
