@@ -162,13 +162,29 @@ const PedalGraph = (function () {
         faint: "pg-faint",
         bold: "pg-bold",
         bgLight: "pg-bg-light",
-        bgNone: "pg-bg-none"
+        bgNone: "pg-bg-none",
+        /** The colour chip before a channel's name in the settings window, coloured by data-trace like the legend swatch. */
+        optionSwatch: "pg-option-swatch"
     };
 
     /** Attribute that keys a strip, swatch or level fill to its channel colour in the CSS. */
     const TRACE_ATTR = "data-trace";
 
     const NO_DATA_TEXT = "waiting for car data";
+
+    /** The attribute that keys an element to its channel colour in the stylesheet. */
+    const traceAttrs = function (index) {
+        const attrs = {};
+
+        attrs[TRACE_ATTR] = index;
+
+        return attrs;
+    };
+
+    /** The channel's colour chip for the settings window: the stylesheet colours it by data-trace. */
+    const optionSwatch = function (trace) {
+        return { className: CLASS.optionSwatch, attrs: traceAttrs(TRACES.indexOf(trace)) };
+    };
 
     /** How a channel is drawn; see the file comment. */
     const KIND = { level: "level", centred: "centred", mark: "mark" };
@@ -234,12 +250,25 @@ const PedalGraph = (function () {
         readouts: "readouts",
         grid: "grid",
         bg: "background",
+        order: "order",
         attract: "attract"
     };
 
+    /**
+     * Which input paints over which, top first. Stacking is a z-index per strip, so
+     * reordering is one style write each when the option changes and no markup moves.
+     * The default is TRACES' own order reversed; the marks sit above all of them
+     * (pedalgraph.css), since a tick under a filled trace would be pointless.
+     */
+    const INPUTS_TOP_FIRST = [STEER, GAS, BRAKE, HANDBRAKE, CLUTCH];
+    const ORDER_DEFAULT = INPUTS_TOP_FIRST.map(function (t) { return TRACES[t].key; });
+    const ORDER_ITEMS = INPUTS_TOP_FIRST.map(function (t) {
+        return { key: TRACES[t].key, label: TRACES[t].name, swatch: optionSwatch(TRACES[t]) };
+    });
+
     /** The switch for one channel; in its section the channel's own name is label enough. */
     const channelSpec = function (trace) {
-        return { key: trace.setting, type: "toggle", label: trace.name, value: trace.on };
+        return { key: trace.setting, type: "toggle", label: trace.name, value: trace.on, swatch: optionSwatch(trace) };
     };
 
     /** One switch per input, listed throttle first: the order a driver thinks in. */
@@ -289,6 +318,14 @@ const PedalGraph = (function () {
         { key: SETTING.levels, type: "toggle", label: "Level bars", value: true },
         { key: SETTING.readouts, type: "toggle", label: "Readouts", value: true },
         { key: SETTING.grid, type: "toggle", label: "Grid lines", value: true },
+        section("stack", "Draw order", 1, true),
+        {
+            key: SETTING.order,
+            type: "order",
+            label: "Drag to reorder; the top of the list paints over the rest",
+            value: ORDER_DEFAULT,
+            items: ORDER_ITEMS
+        },
         section("demo", "Demo", 1, true),
         {
             key: SETTING.attract,
@@ -354,15 +391,6 @@ const PedalGraph = (function () {
      */
     const setIncoming = function (track, slot, transform) {
         track.bars[slot + N].style.transform = transform;
-    };
-
-    /** The attribute that keys an element to its channel colour in the stylesheet. */
-    const traceAttrs = function (index) {
-        const attrs = {};
-
-        attrs[TRACE_ATTR] = index;
-
-        return attrs;
     };
 
     /** Seconds of history the stored choice means; the default when the value is unknown. */
@@ -510,6 +538,17 @@ const PedalGraph = (function () {
         setClass(state.root, CLASS.bgNone, options[SETTING.bg] === BACKGROUND_NONE);
     };
 
+    /** Stack the input strips in the chosen order: the first in the list gets the highest z-index. */
+    const applyOrder = function (state) {
+        const order = options[SETTING.order] || ORDER_DEFAULT;
+
+        TRACES.forEach(function (trace, t) {
+            const at = order.indexOf(trace.key);
+
+            if (at >= 0) { state.tracks[t].el.style.zIndex = String(order.length - at); }
+        });
+    };
+
     /**
      * A new history window: the same bars, sampled at a new rate. The bars already on
      * screen keep their positions, so for one window's worth of scrolling the old history
@@ -539,6 +578,12 @@ const PedalGraph = (function () {
 
         if (key === SETTING.window) {
             applyWindow(state, value);
+
+            return;
+        }
+
+        if (key === SETTING.order) {
+            applyOrder(state);
 
             return;
         }
@@ -774,6 +819,7 @@ const PedalGraph = (function () {
 
         state.attract = Boolean(options[SETTING.attract]);
         applyView(state);
+        applyOrder(state);
 
         // kept, because attach runs again every time the app drawer switches this app back
         // on: a listener per attach would pile up, each holding a state nobody draws any more
@@ -825,6 +871,8 @@ const PedalGraph = (function () {
         /** Toggle the self-running demo on the live widget from the dev console: PedalGraph.attract(true). */
         attract: function (on) { return current ? setAttract(current, on) : false; },
         applyView: applyView,
+        applyOrder: applyOrder,
+        ORDER_DEFAULT: ORDER_DEFAULT,
         commitSample: commitSample,
         renderFrame: renderFrame,
         tick: tick,

@@ -21,6 +21,10 @@
  * The default position (left, bottom) stays in rem: it is a place on the screen, not a
  * size of the panel.
  *
+ * The settings window is outside the widget's root, so the colour chip before each
+ * channel's name there (.pg-option-swatch, carrying data-trace) is coloured by the same
+ * rules as the legend swatch, listed with them below.
+ *
  * Options the script reflects as classes (see applyView in pedalgraph.js): .pg-off on a
  * legend item, strip and level bar whose channel is switched off; .pg-nolevels,
  * .pg-noreadouts, .pg-nogrid, .pg-low / .pg-tall, .pg-faint / .pg-bold and
@@ -235,6 +239,12 @@ body.hide-hud .ace-pedalgraph {
     opacity: 0.55;
 }
 
+/* assist marks sit above every input whatever the draw order (the script stacks the
+   inputs with z-index 1..5 from the Draw order option) */
+.ace-pedalgraph .pg-track.pg-mark {
+    z-index: 10;
+}
+
 /* assist marks: a thin tick along the top of the graph, one row per mark, written 0 or 1 */
 .ace-pedalgraph .pg-track.pg-mark .pg-bar {
     height: 4.5%;
@@ -278,33 +288,41 @@ body.hide-hud .ace-pedalgraph {
     transform: scaleY(0);
 }
 
-/* ---- channel colours -------------------------------------------------------------- */
+/* ---- channel colours (the widget, and the chips in the settings window) ------------ */
 
 .ace-pedalgraph [data-trace="0"] .pg-bar,
 .ace-pedalgraph [data-trace="0"] .pg-swatch,
-.ace-pedalgraph [data-trace="0"] .pg-fill { background: #3aa6ff; }   /* clutch */
+.ace-pedalgraph [data-trace="0"] .pg-fill,
+.pg-option-swatch[data-trace="0"] { background: #3aa6ff; }   /* clutch */
 
 .ace-pedalgraph [data-trace="1"] .pg-bar,
 .ace-pedalgraph [data-trace="1"] .pg-swatch,
-.ace-pedalgraph [data-trace="1"] .pg-fill { background: #ffb020; }   /* handbrake */
+.ace-pedalgraph [data-trace="1"] .pg-fill,
+.pg-option-swatch[data-trace="1"] { background: #ffb020; }   /* handbrake */
 
 .ace-pedalgraph [data-trace="2"] .pg-bar,
 .ace-pedalgraph [data-trace="2"] .pg-swatch,
-.ace-pedalgraph [data-trace="2"] .pg-fill { background: #ff1418; }   /* brake */
+.ace-pedalgraph [data-trace="2"] .pg-fill,
+.pg-option-swatch[data-trace="2"] { background: #ff1418; }   /* brake */
 
 .ace-pedalgraph [data-trace="3"] .pg-bar,
 .ace-pedalgraph [data-trace="3"] .pg-swatch,
-.ace-pedalgraph [data-trace="3"] .pg-fill { background: #44ea78; }   /* throttle */
+.ace-pedalgraph [data-trace="3"] .pg-fill,
+.pg-option-swatch[data-trace="3"] { background: #44ea78; }   /* throttle */
 
 .ace-pedalgraph [data-trace="4"] .pg-bar,
 .ace-pedalgraph [data-trace="4"] .pg-swatch,
-.ace-pedalgraph [data-trace="4"] .pg-fill { background: #c99cff; }   /* steering */
+.ace-pedalgraph [data-trace="4"] .pg-fill,
+.pg-option-swatch[data-trace="4"] { background: #c99cff; }   /* steering */
 
 .ace-pedalgraph [data-trace="5"] .pg-bar,
-.ace-pedalgraph [data-trace="5"] .pg-swatch { background: #f2f2f2; }   /* ABS */
+.ace-pedalgraph [data-trace="5"] .pg-swatch,
+.pg-option-swatch[data-trace="5"] { background: #f2f2f2; }   /* ABS */
 
 .ace-pedalgraph [data-trace="6"] .pg-bar,
-.ace-pedalgraph [data-trace="6"] .pg-swatch { background: #ffe14d; }   /* TC */
+.ace-pedalgraph [data-trace="6"] .pg-swatch,
+.pg-option-swatch[data-trace="6"] { background: #ffe14d; }   /* TC */
 
 .ace-pedalgraph [data-trace="7"] .pg-bar,
-.ace-pedalgraph [data-trace="7"] .pg-swatch { background: #57e3e3; }   /* ESC */
+.ace-pedalgraph [data-trace="7"] .pg-swatch,
+.pg-option-swatch[data-trace="7"] { background: #57e3e3; }   /* ESC */

@@ -21,6 +21,7 @@
  *   all    every channel and mark switched on, for a picture of the whole widget
  *   reset  options back to their defaults
  *   options  the widget's settings window open, as the app drawer opens it in game
+ *   unfold   every section of that window open
  *   shot   for headless screenshots (a Chromium run with --virtual-time-budget delivers one
  *          animation frame and no more, so frames are driven from timers, which do advance)
  */
@@ -236,6 +237,12 @@ const Preview = (function () {
 
         // URL flags (see the top of the file); options persist in localStorage like in game
         if (window.PreviewFlags.indexOf("reset") >= 0) { ACEUIAppLoader.settings.reset("pedalgraph"); }
+
+        if (window.PreviewFlags.indexOf("unfold") >= 0) {
+            ACEUIAppLoader.settings.specs("pedalgraph").forEach(function (spec) {
+                if (spec.type === "section") { ACEUIAppLoader.settings.setCollapsed("pedalgraph", spec.key, false); }
+            });
+        }
 
         if (window.PreviewFlags.indexOf("options") >= 0) { ACEUIAppLoader.settings.open("pedalgraph"); }
 

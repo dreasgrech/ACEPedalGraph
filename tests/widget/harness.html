@@ -225,12 +225,18 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const specs = settings.specs("pedalgraph");
         const keys = specs.map(function (spec) { return spec.key; });
         const sections = specs.filter(function (spec) { return spec.type === "section"; }).map(function (spec) { return spec.key + (spec.columns === 2 ? "*" : "") + (spec.collapsed ? "!" : ""); });
-        eq(sections.join(","), "layout,inputs*,marks*,look*!,demo!", "five sections: two-column where the rows are switches, Look and Demo start folded");
+        eq(sections.join(","), "layout,inputs*,marks*,look*!,stack!,demo!", "six sections: two-column where the rows are switches; Look, Draw order and Demo start folded");
         eq(keys.slice(0, 5).join(","), "layout,scale," + [S.window, S.height].join(",") + ",inputs", "Layout: the loader's scale spec, history and plot height");
         eq(keys.slice(5, 11).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering,marks", "one switch per input, throttle first");
         eq(keys.slice(11, 15).join(","), "markAbs,markTc,markEsc,look", "then the assist marks");
-        eq(keys.slice(15).join(","), [S.weight, S.bg, S.levels, S.readouts, S.grid, "demo", S.attract].join(","), "then the look and the demo");
+        eq(keys.slice(15).join(","), [S.weight, S.bg, S.levels, S.readouts, S.grid, "stack", S.order, "demo", S.attract].join(","), "then the look, the draw order and the demo");
         eq(Object.keys(settings.all("pedalgraph")).indexOf("layout"), -1, "sections carry no value");
+        const sw = function (spec) { return spec.swatch ? spec.swatch.className + "/" + spec.swatch.attrs["data-trace"] : "-"; };
+        eq(specs.filter(function (s) { return s.key === "showBrake"; }).map(sw)[0], "pg-option-swatch/2", "a channel switch carries its colour chip, keyed like the legend swatch");
+        const order = specs.filter(function (s) { return s.key === S.order; })[0];
+        eq(order.items.map(sw).join(","), "pg-option-swatch/4,pg-option-swatch/3,pg-option-swatch/2,pg-option-swatch/1,pg-option-swatch/0", "so does every row of the draw order");
+        const chip = document.createElement("span"); chip.className = "pg-option-swatch"; chip.setAttribute("data-trace", "3"); document.body.appendChild(chip);
+        eq(getComputedStyle(chip).backgroundColor, "rgb(68, 234, 120)", "and the stylesheet colours a chip outside the widget's root"); chip.remove();
         PedalGraph.TRACES.forEach(function (trace) { eq(settings.get("pedalgraph", trace.setting), trace.on, trace.setting + " default"); });
         eq(settings.get("pedalgraph", S.height), "normal"); eq(settings.get("pedalgraph", S.weight), "normal");
         eq(settings.get("pedalgraph", S.window), "5 s", "default window"); eq(settings.get("pedalgraph", S.bg), "dark");
@@ -417,6 +423,20 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(has(root, "pg-faint") && !has(root, "pg-bold")); eq(getComputedStyle(bars[3][0]).opacity, "0.45", "faint");
         eq(getComputedStyle(bars[5][0]).opacity, "0.95", "marks keep their own opacity");
         settings.set("pedalgraph", S.weight, "normal");
+    });
+
+    t("draw order: a z-index per input strip, top of the list highest, marks above all, made whole when an item is missing", function () {
+        const z = function (t) { return tracks[t].style.zIndex; };
+        eq(PedalGraph.ORDER_DEFAULT.join(","), "steering_percent,gas_percent,brake_percent,handbrake_percent,clutch_percent", "default: TRACES' draw order, top first");
+        eq([z(4), z(3), z(2), z(1), z(0)].join(","), "5,4,3,2,1", "steering on top, clutch at the bottom");
+        eq(getComputedStyle(tracks[5]).zIndex, "10", "marks above every input, from the stylesheet");
+        eq(z(5), "", "the script never touches a mark's z-index");
+        settings.set("pedalgraph", S.order, ["brake_percent", "gas_percent", "clutch_percent", "handbrake_percent", "steering_percent"]);
+        eq([z(2), z(3), z(0), z(1), z(4)].join(","), "5,4,3,2,1", "reordered: brake now paints over throttle");
+        eq(settings.set("pedalgraph", S.order, ["clutch_percent"]).join(","), "clutch_percent,steering_percent,gas_percent,brake_percent,handbrake_percent", "a partial list is completed in the default order");
+        eq(z(0), "5", "clutch on top");
+        settings.reset("pedalgraph");
+        eq([z(4), z(3), z(2), z(1), z(0)].join(","), "5,4,3,2,1", "reset restores the stack");
     });
 
     t("re-attach applies the stored options, and Reset to defaults puts everything back", function () {
