@@ -225,10 +225,22 @@ body.hide-hud .ace-pedalgraph {
     opacity: 0.78;
 }
 
+/* Each bar is widened a pixel and a half to the LEFT: the script lays them out in whole
+   slots (left and width in %), and the negative margin plus matching padding grow the
+   painted box past the neighbour's edge. Bars are a pixel or two wide, so every edge is
+   antialiased and two abutting edges leak the background where they meet, as vertical
+   lines beating against the pixel grid; a bar reaching a pixel past the boundary covers
+   that pixel whole. Pixels, not a share of a slot: a whole slot of overlap made every
+   step of the staircase two bars wide, which read as aliasing. Left, never right: the
+   newest committed bar sits just off the LEFT edge of the window, and reaching right
+   poked the newest value into the oldest slot on screen as a hairline that followed the
+   pedals. Not calc(% - px) inline: Cohtml did not apply it and the bars vanished. */
 .ace-pedalgraph .pg-bar {
     position: absolute;
     top: 0;
     height: 100%;
+    margin-left: -1.5px;
+    padding-right: 1.5px;
     transform-origin: 50% 100%;
     transform: scaleY(0);
 }

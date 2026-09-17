@@ -422,8 +422,13 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         settings.set("pedalgraph", S.weight, "faint");
         ok(has(root, "pg-faint") && !has(root, "pg-bold")); eq(getComputedStyle(tracks[3]).opacity, "0.45", "faint");
         eq(getComputedStyle(tracks[5]).opacity, "0.95", "marks keep their own opacity"); eq(getComputedStyle(tracks[4]).opacity, "0.55", "so does steering");
-        const w = parseFloat(bars[3][0].style.width), l1 = parseFloat(bars[3][1].style.left);
-        near(w, 2 * l1, 1e-6, "a bar spans its own slot and the whole of the next: no sub-pixel seam can open");
+        const pct = function (s) { const m = /^([\d.]+)%$/.exec(s); return m ? parseFloat(m[1]) : NaN; };
+        ok(bars[3][1].style.left.indexOf("calc") < 0, "no calc in an inline style: Cohtml does not apply it and the bars vanish");
+        near(pct(bars[3][1].style.width), pct(bars[3][1].style.left), 1e-6, "one slot wide, laid out in whole slots");
+        near(pct(bars[3][2 * N - 1].style.width), 2 * pct(bars[3][1].style.width), 1e-6, "the last bar is a slot wider, to fill the right edge when the incoming slot wraps");
+        const cs = getComputedStyle(bars[3][1]);
+        eq(cs.marginLeft, "-1.5px", "the stylesheet widens each bar 1.5 px to the LEFT, never into the slot at the left edge"); eq(cs.paddingRight, "1.5px", "and keeps its right edge where it was");
+        ok(bars[3][1].getBoundingClientRect().width >= 1.5, "so no painted bar is narrower than the overlap");
         settings.set("pedalgraph", S.weight, "normal");
     });
 

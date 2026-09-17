@@ -76,13 +76,13 @@ const PedalGraph = (function () {
     /** Bars per strip: two identical halves so the wrap-around is invisible. */
     const STRIP_BARS = 2 * N;
     /**
-     * Each bar spans its own slot and the whole of the next one. Bars are a fraction of a
-     * pixel wide at most scales, so every edge is antialiased and adjacent edges beat
-     * against the pixel grid as vertical lines. With a full slot of overlap every pixel
-     * column lies wholly inside some bar and the seams are gone. The trace's translucency
-     * is on the strip (pedalgraph.css), not the bars, so the overlap does not double up.
+     * Bars are laid out in whole slots here; the stylesheet widens each one a pixel and a
+     * half to the LEFT (`.pg-bar`, a negative margin and matching padding), which is what
+     * hides the antialiasing seams between bars a pixel or two wide. See pedalgraph.css
+     * for why pixels rather than a share of a slot, and why left rather than right. It is
+     * not done here with `calc(% - px)`: that renders in a stylesheet but not in an inline
+     * style in the game's Cohtml, and the bars simply vanished.
      */
-    const BAR_OVERLAP = 1;
     const MS_PER_S = 1000;
     const LOG_EVERY_MS = 60000;
     /** Decimals kept when writing transforms; more only churns strings. */
@@ -399,8 +399,8 @@ const PedalGraph = (function () {
      *
      * Slot 0 is the exception: its right-hand twin would be bar 2N, past the end of the
      * strip, and bar N is then the one at the left edge. So for that one sample in every
-     * window nothing is written and the right edge is a bar short, a fraction of a pixel
-     * that the previous bar's overlap covers anyway.
+     * window nothing is written, and the last bar of the strip, a slot wider than the
+     * rest (see stripMarkup), fills the right edge with the newest committed sample.
      */
     const setIncoming = function (track, slot, transform) {
         if (slot === 0) { return; }
@@ -425,16 +425,24 @@ const PedalGraph = (function () {
 
     // ---- markup ------------------------------------------------------------------
 
-    /** One channel's strip: two halves of N bars, laid out once, animated by transform. */
+    /**
+     * One channel's strip: two halves of N bars, laid out once, animated by transform.
+     * The last bar is a slot wider: for the one sample in each window when the incoming
+     * slot is 0 (see setIncoming) the window's right edge runs a fraction of a bar past
+     * the strip, and that bar, holding the newest committed sample, is what fills it.
+     */
     const stripMarkup = function (index) {
         const barW = 100 / STRIP_BARS;
-        const width = (barW * (1 + BAR_OVERLAP)).toFixed(LAYOUT_DECIMALS);
         const classes = TRACES[index].kind === KIND.mark ? CLASS.track + " " + CLASS.mark : CLASS.track;
         const bars = [];
         let j;
 
         for (j = 0; j < STRIP_BARS; j += 1) {
-            bars.push(el("div", CLASS.bar, { style: "left:" + (j * barW).toFixed(LAYOUT_DECIMALS) + "%;width:" + width + "%" }) + close("div"));
+            const slots = j === STRIP_BARS - 1 ? 2 : 1;
+            const left = (j * barW).toFixed(LAYOUT_DECIMALS) + "%";
+            const width = (slots * barW).toFixed(LAYOUT_DECIMALS) + "%";
+
+            bars.push(el("div", CLASS.bar, { style: "left:" + left + ";width:" + width }) + close("div"));
         }
 
         return el("div", classes, traceAttrs(index)) + bars.join("") + close("div");

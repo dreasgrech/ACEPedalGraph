@@ -84,15 +84,27 @@ slot; the right edge is a bar short for 20 ms and the previous bar's overlap cov
 
 ## Seams, and where the translucency lives
 
-Bars are 0.2 % of a strip wide: under a pixel at most scales. Every bar edge is
+Bars are 0.2 % of a strip wide: a pixel or two at most scales. Every bar edge is
 antialiased, so a graph of abutting bars shows vertical lines wherever adjacent edges
-fall across a pixel boundary, spaced by the beat between bar width and pixel width.
-Each bar now spans its own slot and the whole of the next (`BAR_OVERLAP`), so every
-pixel column lies wholly inside some bar. That only works if the bars are opaque:
-translucent bars overlapping would double up into stripes twice as dense, so the
-trace's translucency is the strip's `opacity`, which composites its bars as one shape.
-The trace weight option and steering's and the marks' own opacities are on the strip
-for the same reason.
+fall across a pixel boundary (the background leaks by a·(1−a) at a boundary drawn as
+two partial covers), spaced by the beat between bar width and pixel width. Each bar is
+now widened 1.5 px to the left (`.pg-bar`: a negative margin and matching padding on
+top of a whole-slot layout), so the pixel a boundary falls in is covered whole by the
+later bar. The first attempt wrote `left: calc(X% - 1.5px)` into the inline style;
+Chromium drew it and Cohtml did not, and every bar vanished in game -- the stock UI's
+`calc` is all in stylesheets, and that is where it stays. Two wrong
+turns on the way: widening by a whole *slot* killed the seams but made every step of
+the staircase two bars wide, which read as aliasing; and widening to the *right* let
+the newest committed bar -- just off the left edge of the window -- poke into the
+oldest slot on screen, a hairline that followed the pedals. That only works if the bars
+are opaque: translucent bars overlapping would double up, so the trace's translucency
+is the strip's `opacity`, which composites its bars as one shape. The trace weight
+option and steering's and the marks' own opacities are on the strip for the same reason.
+
+What remains is the staircase itself: 250 samples across the graph is a step every
+couple of pixels, and a steep pedal movement shows them. Finer would need more bars
+(DOM, and per-frame writes) or a different drawing primitive; both are open questions,
+not oversights.
 
 When an input, the level bars or the readouts come back, the per-frame caches
 (`lastScale`, `lastPct`) are cleared so the next frame rewrites them; otherwise
