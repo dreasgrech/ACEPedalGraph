@@ -1,4 +1,4 @@
-"""The shared ACEUIModLoader test kit (modkit.py in the loader repo) plus the widget's own contract."""
+"""The shared ACEUIModLoader test kit (appkit.py in the loader repo) plus the widget's own contract."""
 import os
 import sys
 import unittest
@@ -7,12 +7,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOADER = os.environ.get("ACE_LOADER_DIR") or os.path.join(os.path.dirname(ROOT), "ACEUIModLoader")
 sys.path.insert(0, os.path.join(LOADER, "tools"))
 
-from modkit import ModTests  # noqa: E402
+from appkit import AppTests  # noqa: E402
 
 JS = os.path.join(ROOT, "pedalgraph", "pedalgraph.js")
 
 
-class Tests(ModTests):
+class Tests(AppTests):
     ROOT = ROOT
     MIN_CASES = 13
     HOT_PATH = ("const commitSample", "// ---- lifecycle")

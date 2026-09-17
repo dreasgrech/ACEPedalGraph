@@ -30,8 +30,8 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
 (function () {
     const H = window.__harness;
     const t = H.t, eq = H.eq, ok = H.ok, near = H.near;
-    // what the loader knows about this mod; outside the game the title falls back to the name and the version reads "dev"
-    const me = ACEUIModLoader.mod("pedalgraph");
+    // what the loader knows about this app; outside the game the title falls back to the name and the version reads "dev"
+    const me = ACEUIModLoader.app("pedalgraph");
     const scaleOf = function (el) { const m = /scaleY\((-?[\d.]+)\)/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     const scaleIs = function (el, v, what) { near(scaleOf(el), v, 1e-6, what); };
 
@@ -45,7 +45,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
         eq(me.version, ACEUIModLoader.loader.DEV_VERSION, "version comes from the loader"); eq(me.prefix, "[pedalgraph]");
         eq(me.hudId, "hud_pedalgraph"); eq(me.storageKey, "acepedalgraph.pos");
-        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version " + me.version + ", library " + ACEUIModLoader.VERSION) >= 0; }), "the library logs the script-loaded line for every mod");
+        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version " + me.version + ", library " + ACEUIModLoader.VERSION) >= 0; }), "the library logs the script-loaded line for every app");
         eq(document.getElementById(me.name), null, "harness must not carry the auto-mount root");
         eq(typeof PedalGraph.VERSION, "undefined", "identity is the loader's, not re-exported");
     });
@@ -183,7 +183,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         near(saved.fx, 300 / c.width, 0.001, "fx"); eq(saved.x, "300px", "pixel form kept");
         const entry = window.HUD.StoredData.layouts.default.elements[me.hudId];
         ok(entry && entry.x === "300px", "HUD store entry under hud_pedalgraph");
-        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged with the mod prefix");
+        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " position saved") >= 0 && l.indexOf("hud layout") >= 0; }), "save logged with the app prefix");
         window.HUD = null; localStorage.clear();
     });
 

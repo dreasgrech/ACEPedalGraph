@@ -2,15 +2,15 @@
 
 A HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle, brake, clutch and handbrake input, loaded by the [ACE UI Mod Loader](https://github.com/dreasgrech/ACEUIModLoader) and built on its library.
 
-It is also the **reference mod**: the smallest complete example of the shape every other mod here follows, and the one to copy from.
+It is also the **reference app**: the smallest complete example of the shape every other app here follows, and the one to copy from.
 
 ## Installing
 
-With the loader installed, this mod is a folder and an empty marker file:
+With the loader installed, this app is a folder and an empty marker file:
 
 ```
-Saved Games\ACE\mods\uiresources\ACEUIModLoaderMods\pedalgraph\
-Saved Games\ACE\Video\ACEUIModLoaderMods-pedalgraph.settingspreset
+Saved Games\ACE\mods\uiresources\ACEUIModLoaderApps\pedalgraph\
+Saved Games\ACE\Video\ACEUIModLoaderApps-pedalgraph.settingspreset
 ```
 
 It overrides no game file — it is a loose folder the game reads, found through its marker.
@@ -18,8 +18,8 @@ It overrides no game file — it is a loose folder the game reads, found through
 From a checkout, with the loader repo beside this one:
 
 ```
-python ..\ACEUIModLoader\tools\install_mod.py pedalgraph
-python ..\ACEUIModLoader\tools\install_mod.py --remove pedalgraph
+python ..\ACEUIModLoader\tools\install_app.py pedalgraph
+python ..\ACEUIModLoader\tools\install_app.py --remove pedalgraph
 ```
 
 Escape and resume in the car reloads the HUD and picks up changes.
@@ -32,9 +32,9 @@ The widget reads the game's `ModelCurrentCar` (`gas_percent`, `brake_percent`, `
 |---|---|
 | `ACEUIModLoader.panel` | drag, and a position stored as a fraction of the screen so it survives the HUD reload |
 | `ACEUIModLoader.loop` | the frame loop and the fixed-rate sampler |
-| `ACEUIModLoader.mod("pedalgraph")` | name, version, title, root, logger and storage keys — so none of them is repeated in the source |
+| `ACEUIModLoader.app("pedalgraph")` | name, version, title, root, logger and storage keys — so none of them is repeated in the source |
 
-It writes no colours or sizes, only transforms; every class name, timing and precision is a named constant. The version lives in `pedalgraph/mod.json` and nowhere else.
+It writes no colours or sizes, only transforms; every class name, timing and precision is a named constant. The version lives in `pedalgraph/app.json` and nowhere else.
 
 ## Preview outside the game
 
@@ -53,18 +53,18 @@ What it cannot show: anything Cohtml-specific (this is Chromium), the stock HUD 
 python -m unittest discover -s tests -v
 ```
 
-`tests/test_mod.py` runs the loader's shared test kit pointed at this repo, plus the widget's own contract; `tests/widget/harness.html` holds the browser cases. Clone `ACEUIModLoader` and `ACEGameInternals` beside this repo — the preview and the tests load the library and the shared fixtures from `../ACEUIModLoader/`.
+`tests/test_app.py` runs the loader's shared test kit pointed at this repo, plus the widget's own contract; `tests/widget/harness.html` holds the browser cases. Clone `ACEUIModLoader` and `ACEGameInternals` beside this repo — the preview and the tests load the library and the shared fixtures from `../ACEUIModLoader/`.
 
 ## Layout
 
 ```
 pedalgraph/
-  mod.json          version, title, stylesheet and script
+  app.json          version, title, stylesheet and script
   pedalgraph.js     the widget: PedalGraph.attach(root) / .detach(state)
   pedalgraph.css    all styling, trace colours keyed by data-trace index
 dev/preview.html    the widget outside the game
 tests/
-  test_mod.py       the shared kit plus this mod's contract
+  test_app.py       the shared kit plus this app's contract
   widget/harness.html   the browser cases
 docs/notes.md       rendering rules, versioning, and how to verify a change in game
 ```

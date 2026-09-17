@@ -2,7 +2,7 @@
  * PedalGraph -- Assetto Corsa EVO HUD widget.
  *
  * A scrolling time graph of throttle, brake, clutch and handbrake input, loaded
- * into the stock HUD page by the ACEUIModLoader (see mod.json / mod.js). It knows
+ * into the stock HUD page by the ACEUIModLoader (see app.json). It knows
  * nothing of the stock ks-* component framework; it only reads the global model
  * object the game refreshes every frame and draws into one plain <div>. Styling
  * lives in pedalgraph.css; this file writes no colours or sizes, only transforms.
@@ -39,10 +39,10 @@
 const PedalGraph = (function () {
 
     /**
-     * Identity from the loader: name, version (mod.json), title, root, a prefixed
+     * Identity from the loader: name, version (app.json), title, root, a prefixed
      * logger and the storage keys, so none of it is repeated here.
      */
-    const me = ACEUIModLoader.mod("pedalgraph");
+    const me = ACEUIModLoader.app("pedalgraph");
 
     /** History resolution, independent of frame rate. */
     const SAMPLE_HZ = 50;
@@ -123,7 +123,7 @@ const PedalGraph = (function () {
     /**
      * Attract mode: the widget drives itself with scripted pedal inputs (same as
      * dev/preview.html). It is a declared setting, so the loader stores it, draws it in
-     * this mod's settings window and lists the mod in the app drawer; the checkbox on the
+     * this app's settings window and lists the app in the app drawer; the checkbox on the
      * widget is a second way to reach the same value.
      */
     const ATTRACT_KEY = me.key("attract");      // where it lived before it was a setting
@@ -495,4 +495,4 @@ const PedalGraph = (function () {
 }());
 
 /* Attach to #pedalgraph: the loader creates it in game, the preview page carries it. */
-ACEUIModLoader.mod("pedalgraph").mount(PedalGraph.attach, PedalGraph.detach);
+ACEUIModLoader.app("pedalgraph").mount(PedalGraph.attach, PedalGraph.detach);
