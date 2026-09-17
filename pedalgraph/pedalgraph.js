@@ -80,6 +80,15 @@ const PedalGraph = (function () {
     /** Bars per strip: two identical halves so the wrap-around is invisible. */
     const STRIP_BARS = 2 * N;
     /**
+     * Plus one spare at the very end, index STRIP_BARS. It is the incoming bar for slot 0:
+     * that slot's right-hand twin would be bar N, which is the bar at the LEFT edge just
+     * then, so the live value needs somewhere else to go at the right edge. The spare sits
+     * past the second half and scrolls into the right edge exactly when slot 0 is incoming.
+     */
+    const BAR_COUNT = STRIP_BARS + 1;
+    /** What a bar that must not show is set to: the stylesheet's own initial transform. */
+    const HIDDEN_TRANSFORM = "scaleY(0)";
+    /**
      * Bars are laid out in whole slots here; the stylesheet widens each one a pixel and a
      * half to the LEFT (`.pg-bar`, a negative margin and matching padding), which is what
      * hides the antialiasing seams between bars a pixel or two wide. See pedalgraph.css
@@ -428,20 +437,33 @@ const PedalGraph = (function () {
     };
 
     /**
-     * Write the live value into the incoming bar at the right edge only. Its twin in the
-     * first half is the bar leaving at the LEFT edge -- both are on screen at once, a
-     * fraction of a bar each -- and it must keep the sample from a window ago until the
+     * The bar at the right edge while `slot` is the incoming slot: its right-hand twin,
+     * except for slot 0, whose right-hand twin is the bar at the LEFT edge just then; the
+     * spare bar past the end of the strip stands in for it (see BAR_COUNT).
+     */
+    const incomingIndex = function (slot) {
+        return slot === 0 ? STRIP_BARS : slot + N;
+    };
+
+    /**
+     * Write the live value into the incoming bar at the right edge only. The slot's twin
+     * in the first half is the bar leaving at the LEFT edge -- both are on screen at once,
+     * a fraction of a bar each -- and it must keep the sample from a window ago until the
      * commit overwrites both, or the oldest edge of the graph flickers with the newest value.
-     *
-     * Slot 0 is the exception: its right-hand twin would be bar 2N, past the end of the
-     * strip, and bar N is then the one at the left edge. So for that one sample in every
-     * window nothing is written, and the last bar of the strip, a slot wider than the
-     * rest (see stripMarkup), fills the right edge with the newest committed sample.
      */
     const setIncoming = function (track, slot, transform) {
-        if (slot === 0) { return; }
+        track.bars[incomingIndex(slot)].style.transform = transform;
+    };
 
-        track.bars[slot + N].style.transform = transform;
+    /**
+     * Blank the bar that will be the incoming one after `slot`. It still holds a sample
+     * from a window ago (or, for the spare, the live value from the last wrap), it sits
+     * just past the right edge, and bars are widened 1.5 px to the left: as the strip
+     * scrolls, that stale bar's left edge enters the last pixel of the graph before the
+     * commit overwrites it, as a hairline at the right edge. The commit writes it whole.
+     */
+    const clearNext = function (track, slot) {
+        track.bars[incomingIndex((slot + 1) % N)].style.transform = HIDDEN_TRANSFORM;
     };
 
     /** Seconds of history the stored choice means; the default when the value is unknown. */
@@ -462,23 +484,18 @@ const PedalGraph = (function () {
     // ---- markup ------------------------------------------------------------------
 
     /**
-     * One channel's strip: two halves of N bars, laid out once, animated by transform.
-     * The last bar is a slot wider: for the one sample in each window when the incoming
-     * slot is 0 (see setIncoming) the window's right edge runs a fraction of a bar past
-     * the strip, and that bar, holding the newest committed sample, is what fills it.
+     * One channel's strip: two halves of N bars plus the spare (BAR_COUNT), laid out
+     * once in whole slots, animated by transform.
      */
     const stripMarkup = function (index) {
         const barW = 100 / STRIP_BARS;
+        const width = barW.toFixed(LAYOUT_DECIMALS) + "%";
         const classes = TRACES[index].kind === KIND.mark ? CLASS.track + " " + CLASS.mark : CLASS.track;
         const bars = [];
         let j;
 
-        for (j = 0; j < STRIP_BARS; j += 1) {
-            const slots = j === STRIP_BARS - 1 ? 2 : 1;
-            const left = (j * barW).toFixed(LAYOUT_DECIMALS) + "%";
-            const width = (slots * barW).toFixed(LAYOUT_DECIMALS) + "%";
-
-            bars.push(el("div", CLASS.bar, { style: "left:" + left + ";width:" + width }) + close("div"));
+        for (j = 0; j < BAR_COUNT; j += 1) {
+            bars.push(el("div", CLASS.bar, { style: "left:" + (j * barW).toFixed(LAYOUT_DECIMALS) + "%;width:" + width }) + close("div"));
         }
 
         return el("div", classes, traceAttrs(index)) + bars.join("") + close("div");
@@ -580,6 +597,21 @@ const PedalGraph = (function () {
         return state.aspect;
     };
 
+    /**
+     * The graph has a size: put its edges on whole pixels, then take its aspect. The
+     * graph clips the strips, and a clip edge at a fractional pixel is antialiased: its
+     * last column is a blend of trace and background, a hairline the full height of the
+     * graph at each side, in the trace's colour. Layout in em puts the edges at fractions
+     * almost always. ACEUIAppLoader.dom.snapToPixels grows the graph's margins by the
+     * fractions so it starts and ends on whole pixels; the aspect is taken in the same
+     * frame, a pixel before the snap lands, which is nothing to a slope.
+     */
+    const fitGraph = function (state) {
+        if (state.graph) { ACEUIAppLoader.dom.snapToPixels(state.graph); }
+
+        return measureAspect(state);
+    };
+
     // ---- options -----------------------------------------------------------------
 
     /**
@@ -614,6 +646,8 @@ const PedalGraph = (function () {
         setClass(state.root, CLASS.bgNone, options[SETTING.bg] === BACKGROUND_NONE);
         // the plot height may have changed: the slopes' aspect is stale until the next frame
         state.aspect = 0;
+        // and a channel switched back on must clear the bar past its right edge on its first frame
+        state.lastIncoming = -1;
     };
 
     /** Stack the input strips in the chosen order: the first in the list gets the highest z-index. */
@@ -825,6 +859,8 @@ const PedalGraph = (function () {
 
             track.el.style.transform = shift;
 
+            if (slotAdvanced) { clearNext(track, incoming); }
+
             if (scale !== state.lastScale[t]) {
                 state.lastScale[t] = scale;
                 setIncoming(track, incoming, scale);
@@ -871,8 +907,8 @@ const PedalGraph = (function () {
         }
 
         // the slopes need the graph's size, which the first frames after attach, and the
-        // first after a layout change, do not have yet
-        if (state.aspect === 0) { measureAspect(state); }
+        // first after a layout change, do not have yet; the same moment snaps its edges
+        if (state.aspect === 0) { fitGraph(state); }
 
         // history at the fixed rate (catches up after short hitches, restarts after a stall)
         const frac = ACEUIAppLoader.loop.advance(state.sampler, now, function () {
@@ -910,7 +946,13 @@ const PedalGraph = (function () {
         state.unsubscribeSettings = settings.onChange(me.name, function (key, value) {
             onSetting(state, key, value);
         });
-        state.scaler = me.scale(root, { min: SCALE_MIN, max: SCALE_MAX, step: SCALE_STEP });
+        state.scaler = me.scale(root, {
+            min: SCALE_MIN,
+            max: SCALE_MAX,
+            step: SCALE_STEP,
+            // the panel resized: the graph's edges and aspect are stale until the next frame
+            onScale: function () { state.aspect = 0; }
+        });
         state.ui = me.panel(root, function (now) { tick(state, now); });
         current = state;
         log("widget attached, bars per channel=" + N + ", channels " + state.shown.filter(Boolean).length + "/" + TRACES.length
@@ -941,6 +983,7 @@ const PedalGraph = (function () {
         SAMPLE_HZ: SAMPLE_HZ,
         WINDOW_S: WINDOW_S,
         N: N,
+        BAR_COUNT: BAR_COUNT,
         CLASS: CLASS,
         KIND: KIND,
         TRACES: TRACES,
@@ -957,6 +1000,7 @@ const PedalGraph = (function () {
         applyView: applyView,
         applyOrder: applyOrder,
         measureAspect: measureAspect,
+        fitGraph: fitGraph,
         trapezoidTransform: trapezoidTransform,
         ORDER_DEFAULT: ORDER_DEFAULT,
         commitSample: commitSample,

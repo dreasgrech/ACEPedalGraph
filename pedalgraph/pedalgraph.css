@@ -194,11 +194,14 @@ body.hide-hud .ace-pedalgraph {
     height: 6em;
 }
 
+/* no height of its own: the plot stretches it, and the script grows its margins by
+   fractions of a pixel so its edges land on whole pixels (see fitGraph in pedalgraph.js),
+   which a fixed height could not give way to */
 .ace-pedalgraph .pg-graph {
     position: relative;
     overflow: hidden;
     flex: 1 1 auto;
-    height: 100%;
+    align-self: stretch;
     background: rgba(255, 255, 255, 0.035);
     border-radius: 0.15em;
     box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.16);

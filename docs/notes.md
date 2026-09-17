@@ -79,8 +79,16 @@ screenshot. The commit still writes both, which is what keeps the wrap invisible
 One slot in every window is the exception to that: when the incoming slot is 0, its
 right-hand twin would be bar 2N, past the end of the strip, and bar N -- the left-hand
 twin -- is the one on screen at the left edge. Writing it put a hairline of the live
-value at the far left for one sample period every window. Nothing is written for that
-slot; the right edge is a bar short for 20 ms and the previous bar's overlap covers it.
+value at the far left for one sample period every window. Each strip has a spare bar
+at index 2N for exactly that slot; it scrolls into the right edge when slot 0 is
+incoming and nowhere else.
+
+The bar *beyond* the incoming one is blanked whenever the incoming slot advances. It
+holds a sample from a window ago (or the spare's last live value), it sits just past the
+right edge, and bars are widened 1.5 px to the left: as the strip scrolled, its left
+edge entered the last pixel of the graph before the commit overwrote it -- the same
+hairline, on the right. The commit writes that bar whole a moment later, so blanking it
+costs one transform per channel per sample and shows nothing.
 
 ## Seams, and where the translucency lives
 
@@ -100,6 +108,17 @@ oldest slot on screen, a hairline that followed the pedals. That only works if t
 are opaque: translucent bars overlapping would double up, so the trace's translucency
 is the strip's `opacity`, which composites its bars as one shape. The trace weight
 option and steering's and the marks' own opacities are on the strip for the same reason.
+
+## The clip edge is antialiased
+
+With the fills solid, a faint hairline the full height of the graph appeared at both
+sides, in the trace's colour, in the preview as much as in game. Pixel readings showed
+the last column at 76 % trace, 24 % background: the graph's edge sat at x = 374.76, and
+a clip at a fractional pixel is antialiased. Layout in em puts almost every edge at a
+fraction. `ACEUIAppLoader.dom.snapToPixels` grows the graph's margins by those fractions
+so its four edges land on whole pixels; the widget calls it whenever the layout settles
+(the same frame that measures the aspect). The graph therefore has no fixed height: the
+plot stretches it, and the margins take what they need.
 
 ## Trapezoids, not columns
 

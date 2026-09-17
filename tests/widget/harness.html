@@ -82,8 +82,9 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     };
     grab();
 
-    t("attach builds 8 strips x 2N bars (4 pedals, steering, 3 marks), 5 levels, 5 readouts; panel and loop wired", function () {
-        eq(tracks.length, 8, "strips"); bars.forEach(function (b) { eq(b.length, 2 * N, "bars"); });
+    t("attach builds 8 strips x (2N + 1 spare) bars (4 pedals, steering, 3 marks), 5 levels, 5 readouts; panel and loop wired", function () {
+        eq(PedalGraph.BAR_COUNT, 2 * N + 1, "two halves and one spare for the wrap");
+        eq(tracks.length, 8, "strips"); bars.forEach(function (b) { eq(b.length, 2 * N + 1, "bars"); });
         eq(levels.length, 5, "levels: no level bar for a mark"); eq(vals.length, 5, "readouts: none for a mark");
         eq(root.querySelectorAll(".pg-item").length, 8, "a legend entry for every channel");
         eq(root.querySelectorAll(".pg-track.pg-mark").length, 3, "the marks' strips carry pg-mark");
@@ -115,6 +116,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         barIs(bars[3][2 + N], 0.5, 0.5, "slot 2 is the incoming live bar, written at the right edge only, level from the last sample to the live value");
         barEmpty(bars[3][2], "its twin at the left edge keeps the old sample (none yet)");
         barEmpty(bars[3][3], "slot 3 untouched");
+        eq(bars[3][3 + N].style.transform, "scaleY(0)", "the bar that will be incoming next is blanked, so its stale content cannot show at the right edge");
         eq(state.head, 1, "head advanced");
     });
 
@@ -340,7 +342,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         near(state.sampler.periodMs, 20, 1e-9, "5 s over 250 bars is 50 Hz"); eq(state.sampler.maxGapMs, 5000);
         settings.set("pedalgraph", S.window, "10 s");
         near(state.sampler.periodMs, 40, 1e-9, "10 s is 25 Hz"); eq(state.sampler.maxGapMs, 10000);
-        eq(root.querySelectorAll(".pg-bar").length, PedalGraph.TRACES.length * 2 * N, "no bars added or removed");
+        eq(root.querySelectorAll(".pg-bar").length, PedalGraph.TRACES.length * (2 * N + 1), "no bars added or removed");
         ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " history window 10 s, 25 Hz") >= 0; }), "logged");
         settings.set("pedalgraph", S.window, "3 s");
         near(state.sampler.periodMs, 12, 1e-9, "3 s is 83 Hz");
@@ -404,14 +406,21 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(state.aspect, 0, "a view change clears the aspect: the layout it depends on is stale until the next frame");
         clock.step(234000);
         near(state.aspect, graph.offsetHeight * N / graph.offsetWidth, 1e-9, "the next frame measures it: graph height over bar width, in pixels");
+        const gr = graph.getBoundingClientRect();
+        [gr.left, gr.right, gr.top, gr.bottom].forEach(function (edge, i) { near(edge, Math.round(edge), 1 / 32, "the graph's " + ["left", "right", "top", "bottom"][i] + " edge is on a whole pixel (to the 1/64 px layout unit), so the clip does not antialias a hairline"); });
+        ok(graph.style.marginLeft !== "" || graph.style.marginRight !== "" || gr.left % 1 === 0, "snapped through its margins");
+        state.scaler.set(1.3); clock.step(234020);
+        const gr2 = graph.getBoundingClientRect();
+        near(gr2.left, Math.round(gr2.left), 1 / 32, "still whole after a scale change re-fits it"); near(gr2.right, Math.round(gr2.right), 1 / 32);
+        state.scaler.set(1); clock.step(234040);
         eq(PedalGraph.trapezoidTransform(0, 0.2, 0.6), "translateY(40.0000%) skewY(0.000deg)", "no aspect yet: a level bar at the left value");
         const t1 = PedalGraph.trapezoidTransform(77, 0.2, 0.6);
         eq(t1.indexOf("translateY(40.0000%) skewY(-"), 0, "a rise is a negative skew (up)"); near(parseFloat(/skewY\((-?[\d.]+)deg/.exec(t1)[1]), -Math.atan(0.4 * 77) * 180 / Math.PI, 1e-3);
         eq(PedalGraph.trapezoidTransform(77, 1, 1), "translateY(0.0000%) skewY(0.000deg)", "full and level: top edge at the graph's top");
-        eq(getComputedStyle(bars[3][0]).height, (2 * graph.offsetHeight) + "px", "a pedal's bar is twice the graph tall, so its sheared bottom stays below the graph");
+        near(parseFloat(getComputedStyle(bars[3][0]).height), 2 * graph.getBoundingClientRect().height, 0.1, "a pedal's bar is twice the graph tall, so its sheared bottom stays below the graph");
         eq(getComputedStyle(bars[3][0]).transformOrigin, "0px 0px", "sheared about its top-left corner");
         settings.set("pedalgraph", "showSteering", true); settings.set("pedalgraph", "markAbs", true);
-        eq(getComputedStyle(bars[4][0]).height, graph.offsetHeight + "px", "steering's bar is the graph's height"); eq(getComputedStyle(bars[5][0]).transformOrigin.split(" ")[1], "0px", "a mark's tick grows from the top");
+        near(parseFloat(getComputedStyle(bars[4][0]).height), graph.getBoundingClientRect().height, 0.1, "steering's bar is the graph's height"); eq(getComputedStyle(bars[5][0]).transformOrigin.split(" ")[1], "0px", "a mark's tick grows from the top");
         settings.set("pedalgraph", "showSteering", false); settings.set("pedalgraph", "markAbs", false);
         window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.2, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0, steering_percent: 0.5 };
         const t0 = 235000;                                       // between the steering case and the marks case, which follows at 240 s
@@ -460,7 +469,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const pct = function (s) { const m = /^([\d.]+)%$/.exec(s); return m ? parseFloat(m[1]) : NaN; };
         ok(bars[3][1].style.left.indexOf("calc") < 0, "no calc in an inline style: Cohtml does not apply it and the bars vanish");
         near(pct(bars[3][1].style.width), pct(bars[3][1].style.left), 1e-6, "one slot wide, laid out in whole slots");
-        near(pct(bars[3][2 * N - 1].style.width), 2 * pct(bars[3][1].style.width), 1e-6, "the last bar is a slot wider, to fill the right edge when the incoming slot wraps");
+        near(pct(bars[3][2 * N].style.left), 100, 1e-6, "the spare sits just past the second half"); near(pct(bars[3][2 * N].style.width), pct(bars[3][1].style.width), 1e-6, "one slot wide like the rest");
         const cs = getComputedStyle(bars[3][1]);
         eq(cs.marginLeft, "-1.5px", "the stylesheet widens each bar 1.5 px to the LEFT, never into the slot at the left edge"); eq(cs.paddingRight, "1.5px", "and keeps its right edge where it was");
         ok(bars[3][1].getBoundingClientRect().width >= 1.5, "so no painted bar is narrower than the overlap");
@@ -481,7 +490,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq([z(2), z(0), z(4), z(1), z(3)].join(","), "5,4,3,2,1", "reset restores the stack");
     });
 
-    t("the wrap slot: when the incoming slot is 0 its right-hand twin is off the strip and its left-hand twin is on screen, so nothing is written", function () {
+    t("the wrap slot: when the incoming slot is 0 its right-hand twin is the bar at the left edge, so the live value goes to the spare bar instead", function () {
         window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.33, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0, steering_percent: 0 };
         const v = PedalGraph.readModel();
         PedalGraph.measureAspect(state);                         // a view change cleared it; renderFrame is called here without a tick
@@ -490,12 +499,18 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         PedalGraph.renderFrame(state, v, 0.5);
         eq(bars[3][N].style.transform, oldN, "bar N, at the left edge, keeps its sample");
         eq(bars[3][0].style.transform, old0, "bar 0 untouched too");
+        near(barTo(barOf(bars[3][2 * N])), 0.33, 1e-3, "the spare bar carries the live value at the right edge");
+        eq(bars[3][1 + N].style.transform, "scaleY(0)", "and the next incoming (slot 1's right twin) is blanked");
         scaleIs(levels[3], 0.33, "the level bar still follows the live value");
         const old4 = bars[3][4].style.transform;
         state.head = 3; state.lastIncoming = -1; state.lastScale[3] = "";
         PedalGraph.renderFrame(state, v, 0.5);
         near(barTo(barOf(bars[3][4 + N])), 0.33, 1e-3, "any other slot writes its right-hand twin");
         eq(bars[3][4].style.transform, old4, "and leaves the left-hand one alone");
+        eq(bars[3][5 + N].style.transform, "scaleY(0)", "the bar beyond the incoming one is blanked");
+        state.head = N - 2; state.lastIncoming = -1; state.lastScale[3] = "";
+        PedalGraph.renderFrame(state, v, 0.5);
+        eq(bars[3][2 * N].style.transform, "scaleY(0)", "when slot N-1 is incoming, the spare is what gets blanked, ready for the wrap");
         state.head = 0; state.lastIncoming = -1;
     });
 
