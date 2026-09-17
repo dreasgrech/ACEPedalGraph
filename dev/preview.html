@@ -11,14 +11,38 @@
 
       dev/preview.html
 
-  What it cannot show: Cohtml quirks (this is Chromium), the stock HUD around the
-  widget, and the game's font (a system font stands in for --font-family-main).
+  What it cannot show: Cohtml quirks (this is Chromium) and the stock HUD around the
+  widget. The game's font is used when tools/preview_fonts.py has copied it into
+  dev/fonts/; otherwise a system font stands in for --font-family-main.
 -->
+<script>
+/**
+ * Flags after the # in the URL, comma-separated: preview.html#all,shot
+ *   all    every channel and mark switched on, for a picture of the whole widget
+ *   reset  options back to their defaults
+ *   options  the widget's settings window open, as the app drawer opens it in game
+ *   shot   for headless screenshots (a Chromium run with --virtual-time-budget delivers one
+ *          animation frame and no more, so frames are driven from timers, which do advance)
+ */
+window.PreviewFlags = location.hash.slice(1).split(",");
+
+if (window.PreviewFlags.indexOf("shot") >= 0) {
+    window.requestAnimationFrame = function (cb) { return setTimeout(function () { cb(performance.now()); }, 16); };
+    window.cancelAnimationFrame = function (id) { clearTimeout(id); };
+}
+</script>
 <!-- the ACEUIAppLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
 <script src="../../ACEUIAppLoader/tests/lib/lib.js"></script>
 <link rel="stylesheet" type="text/css" href="../pedalgraph/pedalgraph.css">
 <style>
-    :root { --font-family-main: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; }
+    /* the game's typeface, copied beside this page by tools/preview_fonts.py; a system font stands in when absent */
+    @font-face { font-family: rajdhani; src: url("fonts/rajdhani-regular.ttf"); font-weight: 300; }
+    @font-face { font-family: rajdhani; src: url("fonts/rajdhani-medium.ttf"); font-weight: 400; }
+    @font-face { font-family: rajdhani; src: url("fonts/rajdhani-semibold.ttf"); font-weight: 500; }
+    @font-face { font-family: rajdhani; src: url("fonts/rajdhani-bold.ttf"); font-weight: 600; }
+    @font-face { font-family: rajdhani; src: url("fonts/rajdhani-bold.ttf"); font-weight: 700; }
+    @font-face { font-family: rajdhani-numerals-mono; src: url("fonts/rajdhani-numerals-mono-bold.ttf"); font-weight: 700; }
+    :root { --font-family-main: rajdhani, "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; }
     html, body { margin: 0; height: 100%; background: #101214; color: #ddd; font-family: var(--font-family-main); }
     body { display: flex; flex-direction: column; }
 
@@ -52,18 +76,21 @@
 <div id="panel">
     <span>PedalGraph <b id="version">?</b> preview</span>
     <span><span class="key" data-key="w">W</span> throttle <span class="key" data-key="s">S</span> brake
-          <span class="key" data-key="a">A</span> clutch <span class="key" data-key=" ">Space</span> handbrake</span>
+          <span class="key" data-key="a">A</span> clutch <span class="key" data-key=" ">Space</span> handbrake
+          <span class="key" data-key="arrowleft">&larr;</span><span class="key" data-key="arrowright">&rarr;</span> steer</span>
     <button id="btn-demo" class="on">auto demo</button>
     <button id="btn-hide">hide HUD</button>
     <button id="btn-focus" class="on">focused car</button>
     <button id="btn-reset">reset position</button>
+    <button id="btn-options">options</button>
     <span class="dim">fps <b id="fps">0</b></span>
-    <span class="dim">drag the widget to move it; position persists like in game</span>
+    <span class="dim">drag the widget to move it; position and options persist like in game</span>
 </div>
 
 <script>
 /** Fake game side: a ModelCurrentCar the widget can read, driven by keys or a demo. */
-window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0 };
+window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0,
+                           steering_percent: 0, abs_active: false, tc_active: false, esc_active: false };
 
 const Preview = (function () {
 
@@ -73,7 +100,13 @@ const Preview = (function () {
     const HANDBRAKE_RISE_PER_S = 8.0;
     const FPS_WINDOW_MS = 500;
 
-    const KEY_TO_FIELD = { w: "gas_percent", s: "brake_percent", a: "clutch_percent", " ": "handbrake_percent" };
+    const KEY_TO_FIELD = { w: "gas_percent", s: "brake_percent", a: "clutch_percent", " ": "handbrake_percent",
+                           arrowleft: "steering_percent", arrowright: "steering_percent" };
+    /** Steering is signed (-1 left .. 1 right) and turns faster than a pedal travels. */
+    const STEER_PER_S = 2.5;
+    /** The demo's electronics: ABS under hard braking, TC on a full throttle right after braking. */
+    const ABS_BRAKE = 0.85;
+    const TC_GAS = 0.9;
 
     const state = {
         held: {},
@@ -102,7 +135,8 @@ const Preview = (function () {
             gas_percent: braking ? 0 : clamp01(0.6 + shiftBlip + 0.4 * Math.sin(phase * 0.9)),
             brake_percent: braking ? clamp01(0.9 - (phase - 8.5) * 0.3) : 0,
             clutch_percent: shifting ? 1 : 0,
-            handbrake_percent: phase > 11.2 ? 1 : 0
+            handbrake_percent: phase > 11.2 ? 1 : 0,
+            steering_percent: 0.7 * Math.sin(phase * 0.8)
         };
     };
 
@@ -115,17 +149,27 @@ const Preview = (function () {
             gas_percent: state.held.w ? 1 : 0,
             brake_percent: state.held.s ? 1 : 0,
             clutch_percent: state.held.a ? 1 : 0,
-            handbrake_percent: state.held[" "] ? 1 : 0
+            handbrake_percent: state.held[" "] ? 1 : 0,
+            steering_percent: (state.held.arrowright ? 1 : 0) - (state.held.arrowleft ? 1 : 0)
         };
 
         state.lastNow = now;
 
         if (car) {
             Object.keys(targets).forEach(function (field) {
-                const rate = field === "handbrake_percent" ? HANDBRAKE_RISE_PER_S : (targets[field] > car[field] ? RISE_PER_S : FALL_PER_S);
+                let rate = targets[field] > car[field] ? RISE_PER_S : FALL_PER_S;
+
+                if (field === "handbrake_percent") { rate = HANDBRAKE_RISE_PER_S; }
+
+                if (field === "steering_percent") { rate = STEER_PER_S; }
 
                 car[field] = towards(car[field], targets[field], rate, dt);
             });
+
+            // the electronics follow the pedals, so the assist marks have something to draw
+            car.abs_active = car.brake_percent > ABS_BRAKE;
+            car.tc_active = car.gas_percent > TC_GAS && car.brake_percent === 0 && ((now / 1000) % 4) < 0.4;
+            car.esc_active = car.handbrake_percent > 0.5;
         }
 
         state.frames += 1;
@@ -159,9 +203,9 @@ const Preview = (function () {
     };
 
     const wire = function () {
-        q("#version").textContent = PedalGraph.VERSION;
+        q("#version").textContent = ACEUIAppLoader.app("pedalgraph").version;
 
-        window.addEventListener("keydown", function (e) { setKey(e.key, true); if (e.key === " ") { e.preventDefault(); } });
+        window.addEventListener("keydown", function (e) { setKey(e.key, true); if (e.key === " " || e.key.indexOf("Arrow") === 0) { e.preventDefault(); } });
         window.addEventListener("keyup", function (e) { setKey(e.key, false); });
 
         q("#btn-demo").addEventListener("click", function () { setDemo(!state.demo); });
@@ -180,10 +224,26 @@ const Preview = (function () {
         });
 
         q("#btn-reset").addEventListener("click", function () {
-            ACEUIAppLoader.persist.removeLocal(PedalGraph.STORAGE_KEY);
+            ACEUIAppLoader.persist.removeLocal(ACEUIAppLoader.app("pedalgraph").storageKey);
 
             location.reload();
         });
+
+        // the same settings window the app drawer opens in game, over the stage
+        q("#btn-options").addEventListener("click", function () {
+            ACEUIAppLoader.settings.toggle("pedalgraph");
+        });
+
+        // URL flags (see the top of the file); options persist in localStorage like in game
+        if (window.PreviewFlags.indexOf("reset") >= 0) { ACEUIAppLoader.settings.reset("pedalgraph"); }
+
+        if (window.PreviewFlags.indexOf("options") >= 0) { ACEUIAppLoader.settings.open("pedalgraph"); }
+
+        if (window.PreviewFlags.indexOf("all") >= 0) {
+            ["showSteering", "markAbs", "markTc", "markEsc"].forEach(function (key) {
+                ACEUIAppLoader.settings.set("pedalgraph", key, true);
+            });
+        }
 
         requestAnimationFrame(step);
     };

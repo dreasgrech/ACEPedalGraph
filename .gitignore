@@ -5,3 +5,6 @@ __pycache__/
 # editor swap / temp files (install_app.py skips them too)
 *.swp
 *~
+
+# the game's fonts, copied beside the preview by tools/preview_fonts.py
+dev/fonts/

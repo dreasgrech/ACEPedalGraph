@@ -2,31 +2,107 @@
  * PedalGraph -- widget stylesheet.
  *
  * Linked into hud.html by the ACEUIAppLoader after the stock ui.css /
- * uicomponents.css, so the font variable below is the game's. Trace colours live here, keyed by the
- * data-trace index the script puts on each strip and legend item (see TRACES
- * in pedalgraph.js: 0 clutch, 1 handbrake, 2 brake, 3 throttle).
+ * uicomponents.css, so the font variable below is the game's (Rajdhani, with
+ * `rajdhani-numerals-mono` for figures that must not jitter as they change, the same
+ * pair the stock timers use). Channel colours live here, keyed by the data-trace index
+ * the script puts on each strip, legend item and level bar (see TRACES in pedalgraph.js:
+ * 0 clutch, 1 handbrake, 2 brake, 3 throttle, 4 steering, 5 ABS, 6 TC, 7 ESC). Steering
+ * grows from the centre line (transform-origin at the centre); the assist marks are thin
+ * ticks along the top of the graph, one row each.
  *
- * Cohtml notes: no var() fallbacks (unsupported), and nothing here may change
- * per frame except transforms -- the script only ever writes transform values.
+ * The look follows the stock HUD widgets: a dark translucent panel with a hairline
+ * border and a soft shadow, small radii, dim uppercase labels with bright figures, and
+ * the stock green (#44EA78) for throttle.
+ *
+ * Scaling: every length inside the panel is in em, relative to the root's font-size,
+ * which the script sets (`root.style.fontSize = scale + "rem"`, through the loader's
+ * me.scale) from the Panel scale option. At scale 1 the numbers below are the same as
+ * in rem; inside .pg-header, whose own font-size is 0.7em, a length of X rem is X / 0.7 em.
+ * The default position (left, bottom) stays in rem: it is a place on the screen, not a
+ * size of the panel.
+ *
+ * Options the script reflects as classes (see applyView in pedalgraph.js): .pg-off on a
+ * legend item, strip and level bar whose channel is switched off; .pg-nolevels,
+ * .pg-noreadouts, .pg-nogrid, .pg-low / .pg-tall, .pg-faint / .pg-bold and
+ * .pg-bg-light / .pg-bg-none on the root.
+ *
+ * Cohtml notes: no var() fallbacks (unsupported); flex-wrap, box-shadow, text-shadow and
+ * linear-gradient are all used by the stock stylesheets, so they are known to render;
+ * and nothing here may change per frame except transforms -- the script only ever
+ * writes transform values.
  */
 
 .ace-pedalgraph {
     position: absolute;
     left: 2rem;
     bottom: 12rem;
-    width: 22rem;
+    width: 22em;
     display: block;
-    background: rgba(0, 0, 0, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 0.25rem;
-    padding: 0.35rem 0.5rem 0.4rem 0.5rem;
+    background: linear-gradient(rgba(22, 24, 28, 0.74), rgba(8, 9, 11, 0.80));
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 0.3em;
+    box-shadow: 0 0.25em 1em rgba(0, 0, 0, 0.35);
+    padding: 0.4em 0.55em 0.5em 0.55em;
     color: #fff;
     font-family: var(--font-family-main);
+    font-size: 1rem;
     cursor: pointer;
 }
 
+/* ---- options: background, plot height, trace weight, and what is hidden --------- */
+
+.ace-pedalgraph.pg-bg-light {
+    background: rgba(0, 0, 0, 0.32);
+    border-color: rgba(255, 255, 255, 0.07);
+    box-shadow: none;
+}
+
+.ace-pedalgraph.pg-bg-none {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* after the backgrounds, so the drag outline wins over a transparent border */
 .ace-pedalgraph.dragging {
-    border-color: #bd0000;
+    border-color: rgba(255, 255, 255, 0.7);
+}
+
+/* a channel switched off: its legend item, its strip and its level bar. Three selectors
+   rather than one .pg-off, because the item's own display: flex has the same specificity
+   as a bare .pg-off and comes later in the file, so it would win. */
+.ace-pedalgraph .pg-item.pg-off,
+.ace-pedalgraph .pg-track.pg-off,
+.ace-pedalgraph .pg-lvl.pg-off {
+    display: none;
+}
+
+.ace-pedalgraph.pg-low .pg-plot {
+    height: 4em;
+}
+
+.ace-pedalgraph.pg-tall .pg-plot {
+    height: 9em;
+}
+
+.ace-pedalgraph.pg-faint .pg-bar {
+    opacity: 0.45;
+}
+
+.ace-pedalgraph.pg-bold .pg-bar {
+    opacity: 1;
+}
+
+.ace-pedalgraph.pg-nolevels .pg-bars {
+    display: none;
+}
+
+.ace-pedalgraph.pg-noreadouts .pg-val {
+    display: none;
+}
+
+.ace-pedalgraph.pg-nogrid .pg-grid {
+    display: none;
 }
 
 /* (ACEUIAppLoader.panel keeps the root invisible via an inline style until its stored position is applied) */
@@ -41,77 +117,67 @@ body.hide-hud .ace-pedalgraph {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.2rem;
+    align-items: flex-start;
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 0.286em;
 }
 
+/* wraps to a second line when more channels are on than fit the width */
 .ace-pedalgraph .pg-legend {
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
 }
 
+/* label dim, figure bright: the label is the item's own text, the figure is .pg-val */
 .ace-pedalgraph .pg-item {
     display: flex;
     flex-direction: row;
     align-items: center;
-    margin-left: 0.6rem;
-}
-
-.ace-pedalgraph .pg-item:first-child {
-    margin-left: 0;
+    color: rgba(255, 255, 255, 0.62);
+    /* the gap trails each item rather than leading it, so whichever item is drawn first
+       sits flush left when the ones before it are switched off; the trailing gap after
+       the last one is inside a space-between header and shows nowhere */
+    margin-right: 0.8em;
+    margin-bottom: 0.1em;
 }
 
 .ace-pedalgraph .pg-swatch {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 0.1rem;
-    margin-right: 0.25rem;
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 0.15em;
+    margin-right: 0.35em;
+}
+
+/* an assist mark's legend entry: a thin swatch like the tick it stands for, no readout */
+.ace-pedalgraph .pg-item.pg-mark .pg-swatch {
+    width: 0.9em;
+    height: 0.25em;
 }
 
 .ace-pedalgraph .pg-val {
-    min-width: 2.2rem;
+    min-width: 2.3em;
+    margin-left: 0.25em;
     text-align: right;
+    color: #fff;
+    font-weight: 700;
+    font-family: rajdhani-numerals-mono, var(--font-family-main);
+}
+
+/* steering's readout is longer ("L 42%") */
+.ace-pedalgraph .pg-item[data-trace="4"] .pg-val {
+    min-width: 3.4em;
 }
 
 .ace-pedalgraph .pg-nodata {
-    font-size: 0.65rem;
-    opacity: 0.6;
-}
-
-/* temporary demo toggle (for recording); a div checkbox, since Cohtml has no native one.
-   Floated above the widget's top-left so it never overflows the header. */
-.ace-pedalgraph .pg-attract {
-    position: absolute;
-    left: 0;
-    top: -1.5rem;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    padding: 0.15rem 0.4rem;
-    background: rgba(0, 0, 0, 0.55);
-    border-radius: 0.2rem;
-    font-size: 0.7rem;
-    font-weight: 400;
+    color: rgba(255, 255, 255, 0.45);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: none;
     white-space: nowrap;
-    cursor: pointer;
-    user-select: none;
-}
-
-.ace-pedalgraph .pg-attract-box {
-    width: 0.7rem;
-    height: 0.7rem;
-    margin-right: 0.3rem;
-    border: 1px solid #888;
-    border-radius: 0.15rem;
-    background: rgba(0, 0, 0, 0.4);
-}
-
-.ace-pedalgraph .pg-attract-box.pg-on {
-    background: #3aa6ff;
-    border-color: #3aa6ff;
-    box-shadow: inset 0 0 0 0.12rem #181b1e;
 }
 
 /* ---- plot: scrolling strips ----------------------------------------------------- */
@@ -120,7 +186,7 @@ body.hide-hud .ace-pedalgraph {
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    height: 6rem;
+    height: 6em;
 }
 
 .ace-pedalgraph .pg-graph {
@@ -128,7 +194,9 @@ body.hide-hud .ace-pedalgraph {
     overflow: hidden;
     flex: 1 1 auto;
     height: 100%;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.035);
+    border-radius: 0.15em;
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .ace-pedalgraph .pg-grid {
@@ -136,7 +204,7 @@ body.hide-hud .ace-pedalgraph {
     left: 0;
     right: 0;
     height: 1px;
-    background: rgba(255, 255, 255, 0.10);
+    background: rgba(255, 255, 255, 0.07);
 }
 
 .ace-pedalgraph .pg-track {
@@ -153,23 +221,50 @@ body.hide-hud .ace-pedalgraph {
     height: 100%;
     transform-origin: 50% 100%;
     transform: scaleY(0);
-    opacity: 0.75;
+    opacity: 0.78;
 }
 
-/* ---- level bars: current value per trace --------------------------------------- */
+/* steering grows from the centre line, both in its strip and in its level bar */
+.ace-pedalgraph .pg-track[data-trace="4"] .pg-bar,
+.ace-pedalgraph .pg-lvl[data-trace="4"] > div {
+    transform-origin: 50% 50%;
+}
+
+/* steering paints over the pedals, so it stays translucent whatever the trace weight */
+.ace-pedalgraph .pg-track[data-trace="4"] .pg-bar {
+    opacity: 0.55;
+}
+
+/* assist marks: a thin tick along the top of the graph, one row per mark, written 0 or 1 */
+.ace-pedalgraph .pg-track.pg-mark .pg-bar {
+    height: 4.5%;
+    transform-origin: 50% 0;
+    opacity: 0.95;
+}
+
+.ace-pedalgraph .pg-track[data-trace="6"] .pg-bar {
+    top: 6%;
+}
+
+.ace-pedalgraph .pg-track[data-trace="7"] .pg-bar {
+    top: 12%;
+}
+
+/* ---- level bars: current value per input ---------------------------------------- */
 
 .ace-pedalgraph .pg-bars {
     display: flex;
     flex-direction: row;
-    margin-left: 0.4rem;
+    margin-left: 0.45em;
     height: 100%;
 }
 
 .ace-pedalgraph .pg-lvl {
     position: relative;
-    width: 0.45rem;
-    margin-left: 0.2rem;
-    background: rgba(255, 255, 255, 0.08);
+    width: 0.5em;
+    margin-left: 0.25em;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 0.12em;
     overflow: hidden;
 }
 
@@ -183,7 +278,7 @@ body.hide-hud .ace-pedalgraph {
     transform: scaleY(0);
 }
 
-/* ---- trace colours ---------------------------------------------------------------- */
+/* ---- channel colours -------------------------------------------------------------- */
 
 .ace-pedalgraph [data-trace="0"] .pg-bar,
 .ace-pedalgraph [data-trace="0"] .pg-swatch,
@@ -200,3 +295,16 @@ body.hide-hud .ace-pedalgraph {
 .ace-pedalgraph [data-trace="3"] .pg-bar,
 .ace-pedalgraph [data-trace="3"] .pg-swatch,
 .ace-pedalgraph [data-trace="3"] .pg-fill { background: #44ea78; }   /* throttle */
+
+.ace-pedalgraph [data-trace="4"] .pg-bar,
+.ace-pedalgraph [data-trace="4"] .pg-swatch,
+.ace-pedalgraph [data-trace="4"] .pg-fill { background: #c99cff; }   /* steering */
+
+.ace-pedalgraph [data-trace="5"] .pg-bar,
+.ace-pedalgraph [data-trace="5"] .pg-swatch { background: #f2f2f2; }   /* ABS */
+
+.ace-pedalgraph [data-trace="6"] .pg-bar,
+.ace-pedalgraph [data-trace="6"] .pg-swatch { background: #ffe14d; }   /* TC */
+
+.ace-pedalgraph [data-trace="7"] .pg-bar,
+.ace-pedalgraph [data-trace="7"] .pg-swatch { background: #57e3e3; }   /* ESC */

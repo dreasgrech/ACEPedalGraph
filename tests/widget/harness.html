@@ -13,7 +13,7 @@
 <script src="../../../ACEUIAppLoader/tests/lib/doubles.js"></script>
 <script>
 // Fake car model, mutable by tests.
-window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percent: 0.25, clutch_percent: 0, handbrake_percent: 1 };
+window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percent: 0.25, clutch_percent: 0, handbrake_percent: 1, steering_percent: 0, abs_active: false, tc_active: false };
 </script>
 <!-- the ACEUIAppLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
 <script src="../../../ACEUIAppLoader/tests/lib/lib.js"></script>
@@ -34,6 +34,17 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const me = ACEUIAppLoader.app("pedalgraph");
     const scaleOf = function (el) { const m = /scaleY\((-?[\d.]+)\)/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     const scaleIs = function (el, v, what) { near(scaleOf(el), v, 1e-6, what); };
+    /** A centred (steering) transform, parsed: { shift: translateY %, scale: scaleY }. */
+    const centredOf = function (el) {
+        const m = /translateY\((-?[\d.]+)%\) scaleY\((-?[\d.]+)\)/.exec(el.style.transform || "");
+        return m ? { shift: parseFloat(m[1]), scale: parseFloat(m[2]) } : null;
+    };
+    const centredIs = function (el, shift, scale, what) {
+        const c = centredOf(el);
+        ok(c, what + ": centred transform present, got " + JSON.stringify(el.style.transform));
+        if (c) { near(c.shift, shift, 1e-6, what + " shift"); near(c.scale, scale, 1e-6, what + " scale"); }
+    };
+
 
     const N = 250, HZ = 50, SAMPLE_MS = 1000 / HZ;
     const clock = window.__clock;
@@ -62,9 +73,13 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     };
     grab();
 
-    t("attach builds 4 tracks x 2N bars, 4 levels, 4 readouts; panel and loop wired", function () {
-        eq(tracks.length, 4, "tracks"); bars.forEach(function (b) { eq(b.length, 2 * N, "bars"); });
-        eq(levels.length, 4, "levels"); eq(vals.length, 4, "vals");
+    t("attach builds 8 strips x 2N bars (4 pedals, steering, 3 marks), 5 levels, 5 readouts; panel and loop wired", function () {
+        eq(tracks.length, 8, "strips"); bars.forEach(function (b) { eq(b.length, 2 * N, "bars"); });
+        eq(levels.length, 5, "levels: no level bar for a mark"); eq(vals.length, 5, "readouts: none for a mark");
+        eq(root.querySelectorAll(".pg-item").length, 8, "a legend entry for every channel");
+        eq(root.querySelectorAll(".pg-track.pg-mark").length, 3, "the marks' strips carry pg-mark");
+        [4, 5, 6, 7].forEach(function (t) { ok(tracks[t].classList.contains("pg-off"), "channel " + t + " hidden by default"); });
+        [0, 1, 2, 3].forEach(function (t) { ok(!tracks[t].classList.contains("pg-off"), "pedal " + t + " shown by default"); });
         eq(getComputedStyle(root).position, "absolute", "stylesheet applied");
         ok(root.classList.contains("ace-pedalgraph"), "root class");
         eq(clock.queue.length, 1, "one animation frame requested");
@@ -74,7 +89,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(state.ui.loop && state.ui.loop.running, "loop running");
     });
 
-    // trace order in the script: 0 clutch, 1 handbrake, 2 brake, 3 gas
+    // channel order in the script: 0 clutch, 1 handbrake, 2 brake, 3 gas, 4 steering, 5 ABS, 6 TC, 7 ESC
     t("first frame samples nothing but renders live values and readouts", function () {
         clock.step(1000);
         eq(vals[3].textContent, "50%", "gas readout");
@@ -87,7 +102,8 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         clock.step(1000 + SAMPLE_MS);          // exactly one sample period later
         scaleIs(bars[3][1], 0.5, "slot 1");
         scaleIs(bars[3][1 + N], 0.5, "slot 1+N");
-        scaleIs(bars[3][2], 0.5, "slot 2 is the incoming live bar");
+        scaleIs(bars[3][2 + N], 0.5, "slot 2 is the incoming live bar, written at the right edge only");
+        scaleIs(bars[3][2], 0.0, "its twin at the left edge keeps the old sample (none yet)");
         scaleIs(bars[3][3], 0.0, "slot 3 untouched");
         eq(state.head, 1, "head advanced");
     });
@@ -104,7 +120,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         clock.step(1000 + SAMPLE_MS * 6);       // 6 periods since start => slots 1..6 committed
         let i;
         for (i = 2; i <= 6; i += 1) { scaleIs(bars[3][i], 0.8, "slot " + i); }
-        scaleIs(bars[3][7], 0.8, "incoming slot 7 holds live value");
+        scaleIs(bars[3][7 + N], 0.8, "incoming slot 7 holds live value");
         scaleIs(bars[3][8], 0.0, "slot 8 untouched");
         eq(state.head, 6, "head");
     });
@@ -112,12 +128,12 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     t("a stall longer than the window resets the clock instead of replaying", function () {
         window.ModelCurrentCar.gas_percent = 0.1;
         clock.step(1000 + SAMPLE_MS * 6 + 20000);   // 20 s stall
-        scaleIs(bars[3][7], 0.1, "incoming slot got live value");
+        scaleIs(bars[3][7 + N], 0.1, "incoming slot got live value");
         scaleIs(bars[3][8], 0.0, "no mass replay into slot 8");
         eq(state.head, 6, "head unchanged by the stall");
         clock.step(1000 + SAMPLE_MS * 6 + 20000 + SAMPLE_MS);
         scaleIs(bars[3][7], 0.1, "slot 7 committed");
-        scaleIs(bars[3][8], 0.1, "slot 8 is the new incoming");
+        scaleIs(bars[3][8 + N], 0.1, "slot 8 is the new incoming");
     });
 
     t("values are clamped to 0..1 and readouts only update on change", function () {
@@ -201,34 +217,227 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         PedalGraph.detach(state2); root2.remove(); window.HUD = null;
     });
 
-    t("attract mode: the checkbox and the settings window drive the same value, persisted and restored", function () {
+    const settings = ACEUIAppLoader.settings;
+    const S = PedalGraph.SETTING;
+    const has = function (el, cls) { return el.classList.contains(cls); };
+
+    t("the options are declared once at load, under the loader's settings, so the drawer has a way in", function () {
+        const keys = settings.specs("pedalgraph").map(function (spec) { return spec.key; });
+        eq(keys[0], "scale", "panel scale first, the loader's shared spec");
+        eq(keys.slice(1, 4).join(","), [S.window, S.height, S.weight].join(","), "then the history window and the two looks");
+        eq(keys.slice(4, 9).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering", "one switch per input, throttle first");
+        eq(keys.slice(9, 12).join(","), "markAbs,markTc,markEsc", "then the assist marks");
+        eq(keys.slice(12).join(","), [S.levels, S.readouts, S.grid, S.bg, S.attract].join(","), "then the view options and attract");
+        PedalGraph.TRACES.forEach(function (trace) { eq(settings.get("pedalgraph", trace.setting), trace.on, trace.setting + " default"); });
+        eq(settings.get("pedalgraph", S.height), "normal"); eq(settings.get("pedalgraph", S.weight), "normal");
+        eq(settings.get("pedalgraph", S.window), "5 s", "default window"); eq(settings.get("pedalgraph", S.bg), "dark");
+        eq(settings.get("pedalgraph", "scale"), 1, "default scale");
+    });
+
+    t("panel scale: the settings value is the root's font-size in rem, clamped to the widget's bounds, and follows the window", function () {
+        eq(root.style.fontSize, "1rem", "applied at attach");
+        eq(state.scaler.bounds.min, 0.6); eq(state.scaler.bounds.max, 2); near(state.scaler.bounds.step, 0.1, 1e-9);
+        settings.set("pedalgraph", "scale", 1.5);
+        eq(root.style.fontSize, "1.5rem", "moving it in the settings window resizes the panel");
+        state.scaler.nudge(1);
+        eq(settings.get("pedalgraph", "scale"), 1.6, "and the handle writes back to the setting");
+        settings.set("pedalgraph", "scale", 9);
+        eq(root.style.fontSize, "2rem", "clamped to the max");
+        settings.set("pedalgraph", "scale", 1);
+        eq(root.style.fontSize, "1rem");
+    });
+
+    t("switching an input off hides its legend item, strip and level bar and stops drawing it; history keeps recording", function () {
+        window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.6, brake_percent: 0.2, clutch_percent: 0, handbrake_percent: 0 };
+        const items = Array.prototype.slice.call(root.querySelectorAll(".pg-item"));
+        const boxes = Array.prototype.slice.call(root.querySelectorAll(".pg-lvl"));
+        const t0 = 200000;
+        clock.step(t0);
+        settings.set("pedalgraph", "showThrottle", false);
+        ok(has(items[3], "pg-off") && has(tracks[3], "pg-off") && has(boxes[3], "pg-off"), "throttle's three elements carry pg-off");
+        eq(getComputedStyle(items[3]).display, "none", "the legend item is hidden (its own display: flex must not win)");
+        eq(getComputedStyle(boxes[3]).display, "none", "the level bar is hidden");
+        ok(!has(items[2], "pg-off") && !has(tracks[2], "pg-off"), "brake untouched");
+        eq(state.shown[3], false, "the loop knows");
+        eq(getComputedStyle(tracks[3]).display, "none", "the stylesheet hides it");
+        const shiftBefore = tracks[3].style.transform;
+        const readoutBefore = vals[3].textContent;
+        window.ModelCurrentCar.gas_percent = 0.9;
+        clock.step(t0 + SAMPLE_MS * 2);
+        eq(tracks[3].style.transform, shiftBefore, "a hidden strip is not shifted");
+        eq(vals[3].textContent, readoutBefore, "nor its readout written");
+        ok(tracks[2].style.transform !== shiftBefore, "the others still draw");
+        scaleIs(bars[3][state.head], 0.9, "but its history slot was committed");
+        settings.set("pedalgraph", "showThrottle", true);
+        ok(!has(items[3], "pg-off") && !has(tracks[3], "pg-off") && !has(boxes[3], "pg-off"), "all three back");
+        eq(state.lastScale[3], "", "cache cleared so the next frame rewrites it");
+        clock.step(t0 + SAMPLE_MS * 2 + 1);
+        eq(vals[3].textContent, "90%", "readout catches up on the first frame back");
+        scaleIs(levels[3], 0.9, "so does the level bar");
+    });
+
+    t("level bars, readouts and grid are classes on the root, and hidden ones are not written to", function () {
+        const t0 = 210000;
+        clock.step(t0);
+        settings.set("pedalgraph", S.levels, false);
+        ok(has(root, "pg-nolevels"), "pg-nolevels"); eq(state.levelsOn, false);
+        eq(getComputedStyle(root.querySelector(".pg-bars")).display, "none", "the stylesheet hides them");
+        window.ModelCurrentCar.brake_percent = 0.7;
+        clock.step(t0 + 16);
+        scaleIs(levels[2], 0.2, "level bar not written while hidden (holds 0.2 from before)");
+        eq(vals[2].textContent, "70%", "readout still written");
+        settings.set("pedalgraph", S.levels, true);
+        clock.step(t0 + 32);
+        scaleIs(levels[2], 0.7, "level bar caught up");
+        settings.set("pedalgraph", S.readouts, false);
+        ok(has(root, "pg-noreadouts"), "pg-noreadouts"); eq(state.readoutsOn, false);
+        window.ModelCurrentCar.brake_percent = 0.4;
+        clock.step(t0 + 48);
+        eq(vals[2].textContent, "70%", "readout not written while hidden");
+        scaleIs(levels[2], 0.4, "level bar still written");
+        settings.set("pedalgraph", S.readouts, true);
+        clock.step(t0 + 64);
+        eq(vals[2].textContent, "40%", "readout caught up");
+        settings.set("pedalgraph", S.grid, false);
+        ok(has(root, "pg-nogrid"), "pg-nogrid");
+        eq(getComputedStyle(root.querySelector(".pg-grid")).display, "none", "grid lines hidden by the stylesheet");
+        settings.set("pedalgraph", S.grid, true);
+        ok(!has(root, "pg-nogrid"));
+    });
+
+    t("background is one of three looks, two of them a class", function () {
+        settings.set("pedalgraph", S.bg, "light");
+        ok(has(root, "pg-bg-light") && !has(root, "pg-bg-none"), "light");
+        settings.set("pedalgraph", S.bg, "none");
+        ok(has(root, "pg-bg-none") && !has(root, "pg-bg-light"), "none");
+        eq(getComputedStyle(root).backgroundColor, "rgba(0, 0, 0, 0)", "transparent");
+        settings.set("pedalgraph", S.bg, "dark");
+        ok(!has(root, "pg-bg-none") && !has(root, "pg-bg-light"), "dark is the stylesheet default");
+        eq(settings.set("pedalgraph", S.bg, "purple"), "dark", "an unknown value falls back to the default");
+    });
+
+    t("history window: the same bars sampled at a new rate, a stall longer than the window resets", function () {
+        near(state.sampler.periodMs, 20, 1e-9, "5 s over 250 bars is 50 Hz"); eq(state.sampler.maxGapMs, 5000);
+        settings.set("pedalgraph", S.window, "10 s");
+        near(state.sampler.periodMs, 40, 1e-9, "10 s is 25 Hz"); eq(state.sampler.maxGapMs, 10000);
+        eq(root.querySelectorAll(".pg-bar").length, PedalGraph.TRACES.length * 2 * N, "no bars added or removed");
+        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " history window 10 s, 25 Hz") >= 0; }), "logged");
+        settings.set("pedalgraph", S.window, "3 s");
+        near(state.sampler.periodMs, 12, 1e-9, "3 s is 83 Hz");
+        settings.set("pedalgraph", S.window, "5 s");
+        near(state.sampler.periodMs, 20, 1e-9);
+    });
+
+    t("attract mode: the settings window drives it, it is persisted and restored, and the console toggle writes back", function () {
         window.ModelCurrentCar.has_focused_car = false;              // no real car
-        const toggle = root.querySelector(".pg-attract");
-        const box = root.querySelector(".pg-attract-box");
-        ok(toggle && box, "the Attract mode toggle exists");
-        eq(box.classList.contains("pg-on"), false, "off by default"); eq(state.attract, false);
+        eq(root.querySelector(".pg-attract"), null, "no checkbox on the widget any more: the options window is the way in");
+        eq(state.attract, false, "off by default");
         eq(PedalGraph.readModel(), null, "no car, no real data");
         const demo = PedalGraph.attractValues(3000);
-        eq(demo.length, PedalGraph.TRACES.length, "one value per trace"); ok(demo.every(function (x) { return x >= 0 && x <= 1; }), "clamped");
-        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        eq(state.attract, true, "clicking turned attract on"); ok(box.classList.contains("pg-on"), "box filled");
-        eq(ACEUIAppLoader.settings.get("pedalgraph", "attract"), true, "persisted through the settings store");
-        clock.step(80000); clock.step(80100);                        // it now renders demo data with no car
+        eq(demo.length, PedalGraph.TRACES.length, "one value per channel");
+        ok(demo.slice(0, 4).every(function (x) { return x >= 0 && x <= 1; }), "pedals 0..1");
+        ok(demo[4] >= -1 && demo[4] <= 1, "steering -1..1");
+        ok(demo.slice(5).every(function (x) { return x === 0 || x === 1; }), "marks 0 or 1");
+        let anyAbs = 0, anyTc = 0, anySteer = 0, i;
+        for (i = 0; i < 14000; i += 100) { const d = PedalGraph.attractValues(i); anyAbs += d[5]; anyTc += d[6]; anySteer += Math.abs(d[4]); }
+        ok(anyAbs > 0 && anyTc > 0 && anySteer > 0, "the demo exercises steering and the marks over a lap");
+        settings.set("pedalgraph", S.attract, true);
+        eq(state.attract, true, "moving it in the settings window turns the demo on");
+        clock.step(220000); clock.step(220100);                      // it now renders demo data with no car
         eq(root.querySelector(".pg-nodata").textContent, "", "no-data message cleared while demoing");
         PedalGraph.detach(state); state = PedalGraph.attach(root);   // re-attach restores it from storage
-        eq(state.attract, true, "restored on"); ok(root.querySelector(".pg-attract-box").classList.contains("pg-on"), "box restored filled");
-        ACEUIAppLoader.settings.set("pedalgraph", "attract", false);
-        eq(state.attract, false, "moving it in the settings window moves the widget");
-        ok(!root.querySelector(".pg-attract-box").classList.contains("pg-on"), "and the checkbox follows");
-        PedalGraph.attract(true); eq(ACEUIAppLoader.settings.get("pedalgraph", "attract"), true, "and the console toggle writes back");
-        PedalGraph.attract(false);
+        eq(state.attract, true, "restored on");
+        PedalGraph.attract(false); eq(settings.get("pedalgraph", S.attract), false, "the console toggle writes back");
+        PedalGraph.attract(true); eq(state.attract, true);
+        settings.set("pedalgraph", S.attract, false);
+        eq(state.attract, false);
         window.ModelCurrentCar.has_focused_car = true;
+    });
+
+    t("steering: signed, drawn from the centre line, readout says which way", function () {
+        eq(PedalGraph.centredTransform(1), "translateY(-25.0000%) scaleY(0.500)", "full right: up from the centre, half the strip");
+        eq(PedalGraph.centredTransform(-0.5), "translateY(12.5000%) scaleY(0.250)", "half left: down from the centre");
+        eq(PedalGraph.centredTransform(0), "translateY(0.0000%) scaleY(0.000)", "straight: nothing");
+        eq(PedalGraph.steerText(-0.42), "L 42%"); eq(PedalGraph.steerText(0.07), "R 7%"); eq(PedalGraph.steerText(0), "0%");
+        window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.6, brake_percent: 0.2, clutch_percent: 0, handbrake_percent: 0, steering_percent: -3 };
+        eq(PedalGraph.readModel()[4], -1, "clamped to -1..1, not 0..1: the stock speedo's range");
+        window.ModelCurrentCar.steering_percent = -0.5;
+        const t0 = 230000;
+        clock.step(t0);
+        eq(vals[4].textContent, "0%", "hidden by default: readout untouched");
+        settings.set("pedalgraph", "showSteering", true);
+        ok(!has(tracks[4], "pg-off") && !has(levels[4].parentNode, "pg-off"), "strip and level bar shown");
+        clock.step(t0 + SAMPLE_MS);
+        eq(state.head, 1, "one sample committed (at 50 Hz: an earlier case must leave the window at 5 s)");
+        centredIs(bars[4][state.head], 12.5, 0.25, "history slot carries the centred transform");
+        centredIs(levels[4], 12.5, 0.25, "so does the level bar");
+        eq(vals[4].textContent, "L 50%", "readout");
+        const bar = bars[4][0];
+        eq(getComputedStyle(bar).transformOrigin.split(" ")[1], (bar.offsetHeight / 2) + "px", "origin at the centre (stylesheet)");
+        eq(getComputedStyle(levels[4]).transformOrigin.split(" ")[1], (levels[4].offsetHeight / 2) + "px", "level bar origin at the centre");
+        settings.set("pedalgraph", "showSteering", false);
+        window.ModelCurrentCar.steering_percent = 0;
+    });
+
+    t("assist marks: a boolean becomes a 0/1 tick along the top, with a legend entry and no readout or level bar", function () {
+        eq(state.vals[5], null, "no readout for a mark"); eq(state.levels[5], null, "no level bar for a mark"); eq(state.levelBoxes[5], null);
+        ok(has(state.items[5], "pg-mark"), "legend entry carries pg-mark"); eq(state.items[5].querySelector(".pg-val"), null, "and has no value");
+        window.ModelCurrentCar.abs_active = true;
+        eq(PedalGraph.readModel()[5], 1, "true is 1"); eq(PedalGraph.readModel()[6], 0, "false is 0"); eq(PedalGraph.readModel()[7], 0, "missing (esc_active) is 0");
+        const t0 = 240000;
+        clock.step(t0);
+        settings.set("pedalgraph", "markAbs", true); settings.set("pedalgraph", "markTc", true);
+        ok(!has(tracks[5], "pg-off") && !has(tracks[6], "pg-off") && has(tracks[7], "pg-off"), "ABS and TC shown, ESC still off");
+        clock.step(t0 + SAMPLE_MS);
+        scaleIs(bars[5][state.head], 1, "ABS tick written");
+        scaleIs(bars[6][state.head], 0, "TC quiet");
+        ok(bars[5][0].offsetHeight < tracks[5].offsetHeight / 10, "a mark bar is a thin tick, not a full-height bar");
+        ok(bars[6][0].offsetTop > bars[5][0].offsetTop, "the second mark sits in its own row below the first");
+        eq(getComputedStyle(bars[5][0]).transformOrigin.split(" ")[1], "0px", "grows from the top");
+        settings.set("pedalgraph", "markAbs", false); settings.set("pedalgraph", "markTc", false);
+        window.ModelCurrentCar.abs_active = false;
+    });
+
+    t("plot height and trace weight are classes on the root and change the layout", function () {
+        const plot = root.querySelector(".pg-plot");
+        const normal = plot.offsetHeight;
+        settings.set("pedalgraph", S.height, "low");
+        ok(has(root, "pg-low")); ok(plot.offsetHeight < normal, "lower");
+        settings.set("pedalgraph", S.height, "tall");
+        ok(has(root, "pg-tall") && !has(root, "pg-low")); ok(plot.offsetHeight > normal, "taller");
+        settings.set("pedalgraph", S.height, "normal");
+        eq(plot.offsetHeight, normal, "back");
+        eq(getComputedStyle(bars[3][0]).opacity, "0.78", "normal weight");
+        settings.set("pedalgraph", S.weight, "bold");
+        ok(has(root, "pg-bold")); eq(getComputedStyle(bars[3][0]).opacity, "1", "bold");
+        settings.set("pedalgraph", S.weight, "faint");
+        ok(has(root, "pg-faint") && !has(root, "pg-bold")); eq(getComputedStyle(bars[3][0]).opacity, "0.45", "faint");
+        eq(getComputedStyle(bars[5][0]).opacity, "0.95", "marks keep their own opacity");
+        settings.set("pedalgraph", S.weight, "normal");
+    });
+
+    t("re-attach applies the stored options, and Reset to defaults puts everything back", function () {
+        settings.set("pedalgraph", "showClutch", false); settings.set("pedalgraph", S.levels, false);
+        settings.set("pedalgraph", S.bg, "none"); settings.set("pedalgraph", "scale", 1.3); settings.set("pedalgraph", S.window, "10 s");
+        settings.set("pedalgraph", "showSteering", true); settings.set("pedalgraph", S.height, "tall");
+        PedalGraph.detach(state); state = PedalGraph.attach(root);
+        ok(has(tracks[0], "pg-off"), "clutch still off after re-attach"); ok(has(root, "pg-nolevels")); ok(has(root, "pg-bg-none"));
+        ok(!has(tracks[4], "pg-off"), "steering still on"); ok(has(root, "pg-tall"));
+        eq(root.style.fontSize, "1.3rem", "scale restored"); near(state.sampler.periodMs, 40, 1e-9, "window restored");
+        eq(settings.listenerCount("pedalgraph"), 2, "one listener for the widget and one for me.scale, not a pile");
+        settings.reset("pedalgraph");
+        ok(!has(tracks[0], "pg-off"), "clutch back"); ok(!has(root, "pg-nolevels")); ok(!has(root, "pg-bg-none"));
+        ok(has(tracks[4], "pg-off"), "steering back off"); ok(!has(root, "pg-tall"));
+        eq(root.style.fontSize, "1rem", "scale back"); near(state.sampler.periodMs, 20, 1e-9, "window back");
+        eq(state.attract, false);
     });
 
     t("detach stops the loop and releases listeners; re-attach reuses the markup", function () {
         const barCount = root.querySelectorAll(".pg-bar").length;
         const cancelledBefore = clock.cancelled;
+        const listenersBefore = settings.listenerCount("pedalgraph");
         PedalGraph.detach(state);
+        eq(settings.listenerCount("pedalgraph"), listenersBefore - 2, "settings listeners released (the widget's and me.scale's)");
         eq(clock.cancelled, cancelledBefore + 1, "frame cancelled");
         eq(clock.queue.length, 0, "queue empty");
         eq(state.ui.loop.rafId, 0, "rafId cleared"); eq(state.ui.loop.running, false, "loop stopped");
