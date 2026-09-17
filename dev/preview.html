@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>PedalGraph preview</title>
 <!--
-  Out-of-game preview. Loads the ACEUIModLoader library from the sibling checkout of the loader
+  Out-of-game preview. Loads the ACEUIAppLoader library from the sibling checkout of the loader
   repo, then the real stylesheet and script from pedalgraph/, with a fake
   ModelCurrentCar you drive from the keyboard, inside a 16:9 stand-in for the
   game's HUD container. Open this file directly in Edge or Chrome:
@@ -14,8 +14,8 @@
   What it cannot show: Cohtml quirks (this is Chromium), the stock HUD around the
   widget, and the game's font (a system font stands in for --font-family-main).
 -->
-<!-- the ACEUIModLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
-<script src="../../ACEUIModLoader/tests/lib/lib.js"></script>
+<!-- the ACEUIAppLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
+<script src="../../ACEUIAppLoader/tests/lib/lib.js"></script>
 <link rel="stylesheet" type="text/css" href="../pedalgraph/pedalgraph.css">
 <style>
     :root { --font-family-main: "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 16px; }
@@ -167,7 +167,7 @@ const Preview = (function () {
         q("#btn-demo").addEventListener("click", function () { setDemo(!state.demo); });
 
         q("#btn-hide").addEventListener("click", function () {
-            const hidden = document.body.classList.toggle(ACEUIModLoader.HUD_HIDDEN_CLASS);
+            const hidden = document.body.classList.toggle(ACEUIAppLoader.HUD_HIDDEN_CLASS);
 
             q("#btn-hide").classList.toggle("on", hidden);
         });
@@ -180,7 +180,7 @@ const Preview = (function () {
         });
 
         q("#btn-reset").addEventListener("click", function () {
-            ACEUIModLoader.persist.removeLocal(PedalGraph.STORAGE_KEY);
+            ACEUIAppLoader.persist.removeLocal(PedalGraph.STORAGE_KEY);
 
             location.reload();
         });

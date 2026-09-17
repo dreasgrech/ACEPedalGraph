@@ -1,10 +1,10 @@
-"""The shared ACEUIModLoader test kit (appkit.py in the loader repo) plus the widget's own contract."""
+"""The shared ACEUIAppLoader test kit (appkit.py in the loader repo) plus the widget's own contract."""
 import os
 import sys
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOADER = os.environ.get("ACE_LOADER_DIR") or os.path.join(os.path.dirname(ROOT), "ACEUIModLoader")
+LOADER = os.environ.get("ACE_LOADER_DIR") or os.path.join(os.path.dirname(ROOT), "ACEUIAppLoader")
 sys.path.insert(0, os.path.join(LOADER, "tools"))
 
 from appkit import AppTests  # noqa: E402
@@ -31,8 +31,8 @@ class WidgetContractTests(unittest.TestCase):
         self.assertEqual(self.js.count("root.innerHTML = markup()"), 1, "markup built once, at attach")
 
     def test_samples_at_a_fixed_rate_through_the_library(self):
-        self.assertIn("ACEUIModLoader.loop.sampler(", self.js)
-        self.assertIn("ACEUIModLoader.loop.advance(", self.js)
+        self.assertIn("ACEUIAppLoader.loop.sampler(", self.js)
+        self.assertIn("ACEUIAppLoader.loop.advance(", self.js)
 
 
 if __name__ == "__main__":

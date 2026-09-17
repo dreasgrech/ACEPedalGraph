@@ -10,13 +10,13 @@
   #results { white-space: pre; }
 </style>
 <!-- shared test doubles (fake frame clock, in-memory localStorage, console capture) from the loader repo -->
-<script src="../../../ACEUIModLoader/tests/lib/doubles.js"></script>
+<script src="../../../ACEUIAppLoader/tests/lib/doubles.js"></script>
 <script>
 // Fake car model, mutable by tests.
 window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percent: 0.25, clutch_percent: 0, handbrake_percent: 1 };
 </script>
-<!-- the ACEUIModLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
-<script src="../../../ACEUIModLoader/tests/lib/lib.js"></script>
+<!-- the ACEUIAppLoader library from the sibling checkout, in load order (in game it is part of cohtml.js) -->
+<script src="../../../ACEUIAppLoader/tests/lib/lib.js"></script>
 <link rel="stylesheet" type="text/css" href="../../pedalgraph/pedalgraph.css">
 <!-- classic script, as the loader injects it: `PedalGraph` is a page-wide binding -->
 <script src="../../pedalgraph/pedalgraph.js"></script>
@@ -31,7 +31,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const H = window.__harness;
     const t = H.t, eq = H.eq, ok = H.ok, near = H.near;
     // what the loader knows about this app; outside the game the title falls back to the name and the version reads "dev"
-    const me = ACEUIModLoader.app("pedalgraph");
+    const me = ACEUIAppLoader.app("pedalgraph");
     const scaleOf = function (el) { const m = /scaleY\((-?[\d.]+)\)/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     const scaleIs = function (el, v, what) { near(scaleOf(el), v, 1e-6, what); };
 
@@ -40,12 +40,12 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const center = document.getElementById("center");
 
     t("library present, module present, constants as expected, load logged", function () {
-        eq(typeof ACEUIModLoader, "object", "ACEUIModLoader library"); eq(typeof ACEUIModLoader.panel, "object", "panel"); eq(typeof ACEUIModLoader.loop, "object", "loop");
+        eq(typeof ACEUIAppLoader, "object", "ACEUIAppLoader library"); eq(typeof ACEUIAppLoader.panel, "object", "panel"); eq(typeof ACEUIAppLoader.loop, "object", "loop");
         eq(typeof PedalGraph, "object", "PedalGraph module");
         eq(PedalGraph.N, N, "N"); eq(PedalGraph.SAMPLE_HZ, HZ, "SAMPLE_HZ");
-        eq(me.version, ACEUIModLoader.loader.DEV_VERSION, "version comes from the loader"); eq(me.prefix, "[pedalgraph]");
+        eq(me.version, ACEUIAppLoader.loader.DEV_VERSION, "version comes from the loader"); eq(me.prefix, "[pedalgraph]");
         eq(me.hudId, "hud_pedalgraph"); eq(me.storageKey, "acepedalgraph.pos");
-        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version " + me.version + ", library " + ACEUIModLoader.VERSION) >= 0; }), "the library logs the script-loaded line for every app");
+        ok(window.__log.some(function (l) { return l.indexOf(me.prefix + " script loaded, version " + me.version + ", library " + ACEUIAppLoader.VERSION) >= 0; }), "the library logs the script-loaded line for every app");
         eq(document.getElementById(me.name), null, "harness must not carry the auto-mount root");
         eq(typeof PedalGraph.VERSION, "undefined", "identity is the loader's, not re-exported");
     });
@@ -149,14 +149,14 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     });
 
     t("hidden HUD skips drawing but keeps recording", function () {
-        document.body.classList.add(ACEUIModLoader.HUD_HIDDEN_CLASS);
+        document.body.classList.add(ACEUIAppLoader.HUD_HIDDEN_CLASS);
         const before = tracks[3].style.transform;
         const headBefore = state.head;
         clock.step(80000);
         clock.step(80000 + SAMPLE_MS * 3);
         eq(tracks[3].style.transform, before, "no draw while hidden");
         ok(state.head > headBefore, "history still recording");
-        document.body.classList.remove(ACEUIModLoader.HUD_HIDDEN_CLASS);
+        document.body.classList.remove(ACEUIAppLoader.HUD_HIDDEN_CLASS);
         clock.step(80000 + SAMPLE_MS * 3 + 1);
         ok(tracks[3].style.transform !== before, "draws again when visible");
     });
@@ -212,15 +212,15 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(demo.length, PedalGraph.TRACES.length, "one value per trace"); ok(demo.every(function (x) { return x >= 0 && x <= 1; }), "clamped");
         toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         eq(state.attract, true, "clicking turned attract on"); ok(box.classList.contains("pg-on"), "box filled");
-        eq(ACEUIModLoader.settings.get("pedalgraph", "attract"), true, "persisted through the settings store");
+        eq(ACEUIAppLoader.settings.get("pedalgraph", "attract"), true, "persisted through the settings store");
         clock.step(80000); clock.step(80100);                        // it now renders demo data with no car
         eq(root.querySelector(".pg-nodata").textContent, "", "no-data message cleared while demoing");
         PedalGraph.detach(state); state = PedalGraph.attach(root);   // re-attach restores it from storage
         eq(state.attract, true, "restored on"); ok(root.querySelector(".pg-attract-box").classList.contains("pg-on"), "box restored filled");
-        ACEUIModLoader.settings.set("pedalgraph", "attract", false);
+        ACEUIAppLoader.settings.set("pedalgraph", "attract", false);
         eq(state.attract, false, "moving it in the settings window moves the widget");
         ok(!root.querySelector(".pg-attract-box").classList.contains("pg-on"), "and the checkbox follows");
-        PedalGraph.attract(true); eq(ACEUIModLoader.settings.get("pedalgraph", "attract"), true, "and the console toggle writes back");
+        PedalGraph.attract(true); eq(ACEUIAppLoader.settings.get("pedalgraph", "attract"), true, "and the console toggle writes back");
         PedalGraph.attract(false);
         window.ModelCurrentCar.has_focused_car = true;
     });

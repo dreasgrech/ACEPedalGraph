@@ -2,14 +2,14 @@
  * PedalGraph -- Assetto Corsa EVO HUD widget.
  *
  * A scrolling time graph of throttle, brake, clutch and handbrake input, loaded
- * into the stock HUD page by the ACEUIModLoader (see app.json). It knows
+ * into the stock HUD page by the ACEUIAppLoader (see app.json). It knows
  * nothing of the stock ks-* component framework; it only reads the global model
  * object the game refreshes every frame and draws into one plain <div>. Styling
  * lives in pedalgraph.css; this file writes no colours or sizes, only transforms.
  *
- * Built on the ACEUIModLoader library: `ACEUIModLoader.panel` makes the root draggable and
- * persists its position, `ACEUIModLoader.loop` runs the frame loop and the fixed-rate
- * sampler, `ACEUIModLoader` core provides the small helpers. This file is the graph.
+ * Built on the ACEUIAppLoader library: `ACEUIAppLoader.panel` makes the root draggable and
+ * persists its position, `ACEUIAppLoader.loop` runs the frame loop and the fixed-rate
+ * sampler, `ACEUIAppLoader` core provides the small helpers. This file is the graph.
  *
  * Data source: `window.ModelCurrentCar` (UICurrentCarState, mirrored into the
  * Gameface UI by ksUI.perFrameAllModelUpdate). Fields used, all 0..1:
@@ -42,7 +42,7 @@ const PedalGraph = (function () {
      * Identity from the loader: name, version (app.json), title, root, a prefixed
      * logger and the storage keys, so none of it is repeated here.
      */
-    const me = ACEUIModLoader.app("pedalgraph");
+    const me = ACEUIAppLoader.app("pedalgraph");
 
     /** History resolution, independent of frame rate. */
     const SAMPLE_HZ = 50;
@@ -112,12 +112,12 @@ const PedalGraph = (function () {
     const BRAKE = 2;
     const GAS = 3;
 
-    const clamp = ACEUIModLoader.clamp;
-    const el = ACEUIModLoader.el;
-    const close = ACEUIModLoader.close;
-    const toArray = ACEUIModLoader.toArray;
-    const percentText = ACEUIModLoader.percentText;
-    const persist = ACEUIModLoader.persist;
+    const clamp = ACEUIAppLoader.clamp;
+    const el = ACEUIAppLoader.el;
+    const close = ACEUIAppLoader.close;
+    const toArray = ACEUIAppLoader.toArray;
+    const percentText = ACEUIAppLoader.percentText;
+    const persist = ACEUIAppLoader.persist;
     const log = me.log;
 
     /**
@@ -132,7 +132,7 @@ const PedalGraph = (function () {
     /** The live attached state, so the demo can be toggled from the dev console: PedalGraph.attract(true). */
     let current = null;
 
-    const options = ACEUIModLoader.settings.define(me.name, [
+    const options = ACEUIAppLoader.settings.define(me.name, [
         {
             key: "attract",
             type: "toggle",
@@ -243,11 +243,11 @@ const PedalGraph = (function () {
             noData: root.querySelector("." + CLASS.noData),
             attractToggle: root.querySelector("." + CLASS.attract),
             attractBox: root.querySelector("." + CLASS.attractBox),
-            bag: ACEUIModLoader.dom.listeners(),
+            bag: ACEUIAppLoader.dom.listeners(),
             unsubscribeSettings: null,
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
-            sampler: ACEUIModLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS),
+            sampler: ACEUIAppLoader.loop.sampler(SAMPLE_HZ, WINDOW_MS),
             lastLog: 0,
             lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
@@ -342,7 +342,7 @@ const PedalGraph = (function () {
 
         if (state.attractBox) { state.attractBox.classList.toggle(CLASS.attractOn, state.attract); }
 
-        ACEUIModLoader.settings.set(me.name, "attract", state.attract);
+        ACEUIAppLoader.settings.set(me.name, "attract", state.attract);
         log("attract " + (state.attract ? "on" : "off"));
 
         return state.attract;
@@ -405,7 +405,7 @@ const PedalGraph = (function () {
         const shouldLog = now - state.lastLog > LOG_EVERY_MS;
 
         if (!v) {
-            ACEUIModLoader.loop.reset(state.sampler);
+            ACEUIAppLoader.loop.reset(state.sampler);
 
             if (shouldLog) {
                 state.lastLog = now;
@@ -416,14 +416,14 @@ const PedalGraph = (function () {
         }
 
         // history at the fixed rate (catches up after short hitches, restarts after a stall)
-        const frac = ACEUIModLoader.loop.advance(state.sampler, now, function () {
-            ACEUIModLoader.section("commit sample", function () { commitSample(state, v); });
+        const frac = ACEUIAppLoader.loop.advance(state.sampler, now, function () {
+            ACEUIAppLoader.section("commit sample", function () { commitSample(state, v); });
         });
 
         // nothing to draw while the HUD is toggled off; history keeps recording
-        if (ACEUIModLoader.hudHidden()) { return; }
+        if (ACEUIAppLoader.hudHidden()) { return; }
 
-        ACEUIModLoader.section("render", function () { renderFrame(state, v, frac); });
+        ACEUIAppLoader.section("render", function () { renderFrame(state, v, frac); });
 
         if (state.noData.textContent) { state.noData.textContent = ""; }
 
@@ -450,7 +450,7 @@ const PedalGraph = (function () {
         }
 
         // the same switch lives in the settings window; follow it when it is moved there
-        state.unsubscribeSettings = ACEUIModLoader.settings.onChange(me.name, function (key, value) {
+        state.unsubscribeSettings = ACEUIAppLoader.settings.onChange(me.name, function (key, value) {
             if (key === "attract" && value !== state.attract) { setAttract(state, value); }
         });
 
@@ -495,4 +495,4 @@ const PedalGraph = (function () {
 }());
 
 /* Attach to #pedalgraph: the loader creates it in game, the preview page carries it. */
-ACEUIModLoader.app("pedalgraph").mount(PedalGraph.attach, PedalGraph.detach);
+ACEUIAppLoader.app("pedalgraph").mount(PedalGraph.attach, PedalGraph.detach);
