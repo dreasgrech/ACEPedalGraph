@@ -222,12 +222,15 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const has = function (el, cls) { return el.classList.contains(cls); };
 
     t("the options are declared once at load, under the loader's settings, so the drawer has a way in", function () {
-        const keys = settings.specs("pedalgraph").map(function (spec) { return spec.key; });
-        eq(keys[0], "scale", "panel scale first, the loader's shared spec");
-        eq(keys.slice(1, 4).join(","), [S.window, S.height, S.weight].join(","), "then the history window and the two looks");
-        eq(keys.slice(4, 9).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering", "one switch per input, throttle first");
-        eq(keys.slice(9, 12).join(","), "markAbs,markTc,markEsc", "then the assist marks");
-        eq(keys.slice(12).join(","), [S.levels, S.readouts, S.grid, S.bg, S.attract].join(","), "then the view options and attract");
+        const specs = settings.specs("pedalgraph");
+        const keys = specs.map(function (spec) { return spec.key; });
+        const sections = specs.filter(function (spec) { return spec.type === "section"; }).map(function (spec) { return spec.key + (spec.columns === 2 ? "*" : "") + (spec.collapsed ? "!" : ""); });
+        eq(sections.join(","), "layout,inputs*,marks*,look*!,demo!", "five sections: two-column where the rows are switches, Look and Demo start folded");
+        eq(keys.slice(0, 5).join(","), "layout,scale," + [S.window, S.height].join(",") + ",inputs", "Layout: the loader's scale spec, history and plot height");
+        eq(keys.slice(5, 11).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering,marks", "one switch per input, throttle first");
+        eq(keys.slice(11, 15).join(","), "markAbs,markTc,markEsc,look", "then the assist marks");
+        eq(keys.slice(15).join(","), [S.weight, S.bg, S.levels, S.readouts, S.grid, "demo", S.attract].join(","), "then the look and the demo");
+        eq(Object.keys(settings.all("pedalgraph")).indexOf("layout"), -1, "sections carry no value");
         PedalGraph.TRACES.forEach(function (trace) { eq(settings.get("pedalgraph", trace.setting), trace.on, trace.setting + " default"); });
         eq(settings.get("pedalgraph", S.height), "normal"); eq(settings.get("pedalgraph", S.weight), "normal");
         eq(settings.get("pedalgraph", S.window), "5 s", "default window"); eq(settings.get("pedalgraph", S.bg), "dark");

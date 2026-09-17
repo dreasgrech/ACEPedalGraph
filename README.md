@@ -29,23 +29,23 @@ Escape and resume in the car reloads the HUD and picks up changes.
 
 ## Options
 
-The app drawer's **OPTIONS** button opens the widget's settings window. Everything is stored by the loader and survives the HUD reload and a restart.
+The app drawer's **OPTIONS** button opens the widget's settings window. Everything is stored by the loader and survives the HUD reload and a restart. The window is in five sections; click a header to fold it, and the fold is remembered.
 
-| Option | What it does |
-|---|---|
-| **Panel scale** | 0.6 to 2, in steps of 0.1. One font-size on the root; everything inside is sized in em. |
-| **History** | 3 s, 5 s or 10 s of input across the graph. The bar count is fixed, so a longer window is a slower sampler (83, 50 or 25 Hz). |
-| **Plot height** | `low`, `normal` or `tall`: a wide low strip under the car, or a taller graph for reading trail-braking. |
-| **Traces** | `faint`, `normal` or `bold`: how solid the bars are drawn, for over a busy background or none. |
-| **Show throttle / brake / handbrake / clutch / steering** | Draw or hide each input: its legend entry, its trace and its level bar. A hidden input keeps recording, so switching it back on shows the history it has. Steering is off by default; it draws from the centre line, right upward, and its readout says which way (`L 42%`). |
-| **ABS / TC / ESC marks** | Off by default. A thin tick along the top of the graph, one row each, wherever that assist was active: where the electronics stepped in against your inputs. |
-| **Level bars** | The live value of each input, beside the graph. |
-| **Readouts** | The live percentage of each input, in the legend. |
-| **Grid lines** | The 25 / 50 / 75 % reference lines. |
-| **Background** | `dark` (the default), `light`, or `none` for just the traces over the game. |
-| **Attract mode** | Scripted inputs, for recording without driving. `PedalGraph.attract(true)` in the dev console does the same. |
+| Section | Option | What it does |
+|---|---|---|
+| **Layout** | Panel scale | 0.6 to 2, in steps of 0.1. One font-size on the root; everything inside is sized in em. |
+| | History | 3 s, 5 s or 10 s of input across the graph. The bar count is fixed, so a longer window is a slower sampler (83, 50 or 25 Hz). |
+| | Plot height | `low`, `normal` or `tall`: a wide low strip under the car, or a taller graph for reading trail-braking. |
+| **Inputs** | Throttle, Brake, Handbrake, Clutch, Steering | Draw or hide each input: its legend entry, its trace and its level bar. A hidden input keeps recording, so switching it back on shows the history it has. Steering is off by default; it draws from the centre line, right upward, and its readout says which way (`L 42%`). |
+| **Assist marks** | ABS, TC, ESC | Off by default. A thin tick along the top of the graph, one row each, wherever that assist was active: where the electronics stepped in against your inputs. |
+| **Look** (folded) | Traces | `faint`, `normal` or `bold`: how solid the bars are drawn, for over a busy background or none. |
+| | Background | `dark` (the default), `light`, or `none` for just the traces over the game. |
+| | Level bars | The live value of each input, beside the graph. |
+| | Readouts | The live value of each input, in the legend. |
+| | Grid lines | The 25 / 50 / 75 % reference lines. |
+| **Demo** (folded) | Attract mode | Scripted inputs, for recording without driving. `PedalGraph.attract(true)` in the dev console does the same. |
 
-**Reset to defaults** at the bottom puts everything back. Nothing hidden costs a frame: every option is a class on a fixed element, and the loop skips the writes for what is not drawn.
+**Reset to defaults** at the bottom puts every value back (the folds stay as you left them). Nothing hidden costs a frame: every option is a class on a fixed element, and the loop skips the writes for what is not drawn.
 
 ## What it is made of
 

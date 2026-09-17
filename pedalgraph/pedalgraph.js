@@ -220,6 +220,10 @@ const PedalGraph = (function () {
      * The options. Declared once at load, so the drawer offers the OPTIONS button and
      * the values are there before attach; the loader stores them and draws the window.
      * Everything but `attract` and `window` is a view option: a class on a fixed element.
+     *
+     * Laid out in sections (the loader folds them and remembers the folds): Layout,
+     * Inputs and Assist marks open, Look and Demo folded, so the window opens on what
+     * a player reaches for and the rest is a click away rather than a wall of rows.
      */
     const SETTING = {
         scale: "scale",
@@ -233,26 +237,28 @@ const PedalGraph = (function () {
         attract: "attract"
     };
 
-    /** The switch for one channel. */
-    const channelSpec = function (trace, verb) {
-        return { key: trace.setting, type: "toggle", label: verb + " " + trace.name.toLowerCase(), value: trace.on };
+    /** The switch for one channel; in its section the channel's own name is label enough. */
+    const channelSpec = function (trace) {
+        return { key: trace.setting, type: "toggle", label: trace.name, value: trace.on };
     };
 
     /** One switch per input, listed throttle first: the order a driver thinks in. */
-    const inputSpecs = [GAS, BRAKE, HANDBRAKE, CLUTCH, STEER].map(function (t) { return channelSpec(TRACES[t], "Show"); });
-    const markSpecs = TRACES.filter(function (trace) { return trace.kind === KIND.mark; }).map(function (trace) {
-        return { key: trace.setting, type: "toggle", label: trace.name + " marks", value: trace.on };
-    });
+    const inputSpecs = [GAS, BRAKE, HANDBRAKE, CLUTCH, STEER].map(function (t) { return channelSpec(TRACES[t]); });
+    const markSpecs = TRACES.filter(function (trace) { return trace.kind === KIND.mark; }).map(channelSpec);
+
+    const section = function (key, label, columns, collapsed) {
+        return { key: key, type: "section", label: label, columns: columns, collapsed: collapsed };
+    };
 
     const options = settings.define(me.name, [
+        section("layout", "Layout", 1, false),
         me.scaleSpec({ min: SCALE_MIN, max: SCALE_MAX, step: SCALE_STEP }),
         {
             key: SETTING.window,
             type: "choice",
             label: "History",
             value: WINDOW_DEFAULT,
-            options: Object.keys(WINDOW_CHOICES),
-            hint: "seconds of input across the graph"
+            options: Object.keys(WINDOW_CHOICES)
         },
         {
             key: SETTING.height,
@@ -261,29 +267,18 @@ const PedalGraph = (function () {
             value: HEIGHT_NORMAL,
             options: [HEIGHT_LOW, HEIGHT_NORMAL, HEIGHT_TALL]
         },
+        section("inputs", "Inputs", 2, false)
+    ].concat(inputSpecs).concat([
+        section("marks", "Assist marks", 2, false)
+    ]).concat(markSpecs).concat([
+        section("look", "Look", 2, true),
         {
             key: SETTING.weight,
             type: "choice",
             label: "Traces",
             value: WEIGHT_NORMAL,
             options: [WEIGHT_FAINT, WEIGHT_NORMAL, WEIGHT_BOLD]
-        }
-    ].concat(inputSpecs).concat(markSpecs).concat([
-        {
-            key: SETTING.levels,
-            type: "toggle",
-            label: "Level bars",
-            value: true,
-            hint: "the live value of each input, beside the graph"
         },
-        {
-            key: SETTING.readouts,
-            type: "toggle",
-            label: "Readouts",
-            value: true,
-            hint: "the live value of each input, in the legend"
-        },
-        { key: SETTING.grid, type: "toggle", label: "Grid lines", value: true },
         {
             key: SETTING.bg,
             type: "choice",
@@ -291,6 +286,10 @@ const PedalGraph = (function () {
             value: BACKGROUND_DARK,
             options: [BACKGROUND_DARK, BACKGROUND_LIGHT, BACKGROUND_NONE]
         },
+        { key: SETTING.levels, type: "toggle", label: "Level bars", value: true },
+        { key: SETTING.readouts, type: "toggle", label: "Readouts", value: true },
+        { key: SETTING.grid, type: "toggle", label: "Grid lines", value: true },
+        section("demo", "Demo", 1, true),
         {
             key: SETTING.attract,
             type: "toggle",
