@@ -75,8 +75,14 @@ const PedalGraph = (function () {
     const N = SAMPLE_HZ * WINDOW_S;
     /** Bars per strip: two identical halves so the wrap-around is invisible. */
     const STRIP_BARS = 2 * N;
-    /** Bars are widened a hair so rounding cannot open seams between them. */
-    const BAR_OVERLAP_PCT = 0.02;
+    /**
+     * Each bar spans its own slot and the whole of the next one. Bars are a fraction of a
+     * pixel wide at most scales, so every edge is antialiased and adjacent edges beat
+     * against the pixel grid as vertical lines. With a full slot of overlap every pixel
+     * column lies wholly inside some bar and the seams are gone. The trace's translucency
+     * is on the strip (pedalgraph.css), not the bars, so the overlap does not double up.
+     */
+    const BAR_OVERLAP = 1;
     const MS_PER_S = 1000;
     const LOG_EVERY_MS = 60000;
     /** Decimals kept when writing transforms; more only churns strings. */
@@ -257,10 +263,12 @@ const PedalGraph = (function () {
     /**
      * Which input paints over which, top first. Stacking is a z-index per strip, so
      * reordering is one style write each when the option changes and no markup moves.
-     * The default is TRACES' own order reversed; the marks sit above all of them
-     * (pedalgraph.css), since a tick under a filled trace would be pointless.
+     * Brake on top: it is the trace read most closely and the one most often buried
+     * under a full throttle; throttle at the bottom because it is on most of the time.
+     * The marks sit above all of them (pedalgraph.css); a tick under a filled trace
+     * would be pointless.
      */
-    const INPUTS_TOP_FIRST = [STEER, GAS, BRAKE, HANDBRAKE, CLUTCH];
+    const INPUTS_TOP_FIRST = [BRAKE, CLUTCH, STEER, HANDBRAKE, GAS];
     const ORDER_DEFAULT = INPUTS_TOP_FIRST.map(function (t) { return TRACES[t].key; });
     const ORDER_ITEMS = INPUTS_TOP_FIRST.map(function (t) {
         return { key: TRACES[t].key, label: TRACES[t].name, swatch: optionSwatch(TRACES[t]) };
@@ -388,8 +396,15 @@ const PedalGraph = (function () {
      * first half is the bar leaving at the LEFT edge -- both are on screen at once, a
      * fraction of a bar each -- and it must keep the sample from a window ago until the
      * commit overwrites both, or the oldest edge of the graph flickers with the newest value.
+     *
+     * Slot 0 is the exception: its right-hand twin would be bar 2N, past the end of the
+     * strip, and bar N is then the one at the left edge. So for that one sample in every
+     * window nothing is written and the right edge is a bar short, a fraction of a pixel
+     * that the previous bar's overlap covers anyway.
      */
     const setIncoming = function (track, slot, transform) {
+        if (slot === 0) { return; }
+
         track.bars[slot + N].style.transform = transform;
     };
 
@@ -413,7 +428,7 @@ const PedalGraph = (function () {
     /** One channel's strip: two halves of N bars, laid out once, animated by transform. */
     const stripMarkup = function (index) {
         const barW = 100 / STRIP_BARS;
-        const width = (barW + BAR_OVERLAP_PCT).toFixed(LAYOUT_DECIMALS);
+        const width = (barW * (1 + BAR_OVERLAP)).toFixed(LAYOUT_DECIMALS);
         const classes = TRACES[index].kind === KIND.mark ? CLASS.track + " " + CLASS.mark : CLASS.track;
         const bars = [];
         let j;

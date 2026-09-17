@@ -76,6 +76,24 @@ put the newest value on the oldest edge of the graph as a one-bar sliver that fl
 with the pedals. It was there from the first version and only showed up in a 2.5x
 screenshot. The commit still writes both, which is what keeps the wrap invisible.
 
+One slot in every window is the exception to that: when the incoming slot is 0, its
+right-hand twin would be bar 2N, past the end of the strip, and bar N -- the left-hand
+twin -- is the one on screen at the left edge. Writing it put a hairline of the live
+value at the far left for one sample period every window. Nothing is written for that
+slot; the right edge is a bar short for 20 ms and the previous bar's overlap covers it.
+
+## Seams, and where the translucency lives
+
+Bars are 0.2 % of a strip wide: under a pixel at most scales. Every bar edge is
+antialiased, so a graph of abutting bars shows vertical lines wherever adjacent edges
+fall across a pixel boundary, spaced by the beat between bar width and pixel width.
+Each bar now spans its own slot and the whole of the next (`BAR_OVERLAP`), so every
+pixel column lies wholly inside some bar. That only works if the bars are opaque:
+translucent bars overlapping would double up into stripes twice as dense, so the
+trace's translucency is the strip's `opacity`, which composites its bars as one shape.
+The trace weight option and steering's and the marks' own opacities are on the strip
+for the same reason.
+
 When an input, the level bars or the readouts come back, the per-frame caches
 (`lastScale`, `lastPct`) are cleared so the next frame rewrites them; otherwise
 a value that happened to match the cached one would leave the stale element on

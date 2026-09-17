@@ -89,11 +89,12 @@
     height: 9em;
 }
 
-.ace-pedalgraph.pg-faint .pg-bar {
+/* trace weight is the strip's opacity (see .pg-track for why the strip and not the bars) */
+.ace-pedalgraph.pg-faint .pg-track {
     opacity: 0.45;
 }
 
-.ace-pedalgraph.pg-bold .pg-bar {
+.ace-pedalgraph.pg-bold .pg-track {
     opacity: 1;
 }
 
@@ -211,12 +212,17 @@ body.hide-hud .ace-pedalgraph {
     background: rgba(255, 255, 255, 0.07);
 }
 
+/* The translucency is the strip's, not each bar's: the bars overlap by a whole slot
+   (see BAR_OVERLAP in pedalgraph.js) to kill the antialiasing seams between sub-pixel
+   bars, and translucent bars overlapping would read as stripes twice as dense. A
+   translucent strip composites its opaque bars as one shape. */
 .ace-pedalgraph .pg-track {
     position: absolute;
     top: 0;
     left: 0;
     height: 100%;
     width: 200%;
+    opacity: 0.78;
 }
 
 .ace-pedalgraph .pg-bar {
@@ -225,7 +231,6 @@ body.hide-hud .ace-pedalgraph {
     height: 100%;
     transform-origin: 50% 100%;
     transform: scaleY(0);
-    opacity: 0.78;
 }
 
 /* steering grows from the centre line, both in its strip and in its level bar */
@@ -234,22 +239,23 @@ body.hide-hud .ace-pedalgraph {
     transform-origin: 50% 50%;
 }
 
-/* steering paints over the pedals, so it stays translucent whatever the trace weight */
-.ace-pedalgraph .pg-track[data-trace="4"] .pg-bar {
+/* steering paints over the pedals, so it stays translucent whatever the trace weight
+   (after the weight rules, same specificity) */
+.ace-pedalgraph .pg-track[data-trace="4"] {
     opacity: 0.55;
 }
 
 /* assist marks sit above every input whatever the draw order (the script stacks the
-   inputs with z-index 1..5 from the Draw order option) */
+   inputs with z-index 1..5 from the Draw order option), and keep their own opacity */
 .ace-pedalgraph .pg-track.pg-mark {
     z-index: 10;
+    opacity: 0.95;
 }
 
 /* assist marks: a thin tick along the top of the graph, one row per mark, written 0 or 1 */
 .ace-pedalgraph .pg-track.pg-mark .pg-bar {
     height: 4.5%;
     transform-origin: 50% 0;
-    opacity: 0.95;
 }
 
 .ace-pedalgraph .pg-track[data-trace="6"] .pg-bar {

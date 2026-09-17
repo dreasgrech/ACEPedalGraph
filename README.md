@@ -43,7 +43,7 @@ The app drawer's **OPTIONS** button opens the widget's settings window. Everythi
 | | Level bars | The live value of each input, beside the graph. |
 | | Readouts | The live value of each input, in the legend. |
 | | Grid lines | The 25 / 50 / 75 % reference lines. |
-| **Draw order** (folded) | a list you drag | Which input paints over which: the top of the list is drawn on top. Default is steering, throttle, brake, handbrake, clutch. The assist marks always sit above. |
+| **Draw order** (folded) | a list you drag | Which input paints over which: the top of the list is drawn on top. Default is brake, clutch, steering, handbrake, throttle. The assist marks always sit above. |
 | **Demo** (folded) | Attract mode | Scripted inputs, for recording without driving. `PedalGraph.attract(true)` in the dev console does the same. |
 
 **Reset to defaults** at the bottom puts every value back (the folds stay as you left them). Nothing hidden costs a frame: every option is a class on a fixed element, and the loop skips the writes for what is not drawn.

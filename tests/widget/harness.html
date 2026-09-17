@@ -234,7 +234,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const sw = function (spec) { return spec.swatch ? spec.swatch.className + "/" + spec.swatch.attrs["data-trace"] : "-"; };
         eq(specs.filter(function (s) { return s.key === "showBrake"; }).map(sw)[0], "pg-option-swatch/2", "a channel switch carries its colour chip, keyed like the legend swatch");
         const order = specs.filter(function (s) { return s.key === S.order; })[0];
-        eq(order.items.map(sw).join(","), "pg-option-swatch/4,pg-option-swatch/3,pg-option-swatch/2,pg-option-swatch/1,pg-option-swatch/0", "so does every row of the draw order");
+        eq(order.items.map(sw).join(","), "pg-option-swatch/2,pg-option-swatch/0,pg-option-swatch/4,pg-option-swatch/1,pg-option-swatch/3", "so does every row of the draw order, in the default order");
         const chip = document.createElement("span"); chip.className = "pg-option-swatch"; chip.setAttribute("data-trace", "3"); document.body.appendChild(chip);
         eq(getComputedStyle(chip).backgroundColor, "rgb(68, 234, 120)", "and the stylesheet colours a chip outside the widget's root"); chip.remove();
         PedalGraph.TRACES.forEach(function (trace) { eq(settings.get("pedalgraph", trace.setting), trace.on, trace.setting + " default"); });
@@ -416,27 +416,75 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(has(root, "pg-tall") && !has(root, "pg-low")); ok(plot.offsetHeight > normal, "taller");
         settings.set("pedalgraph", S.height, "normal");
         eq(plot.offsetHeight, normal, "back");
-        eq(getComputedStyle(bars[3][0]).opacity, "0.78", "normal weight");
+        eq(getComputedStyle(tracks[3]).opacity, "0.78", "normal weight, on the strip"); eq(getComputedStyle(bars[3][0]).opacity, "1", "the bars themselves are opaque, so their overlap does not double");
         settings.set("pedalgraph", S.weight, "bold");
-        ok(has(root, "pg-bold")); eq(getComputedStyle(bars[3][0]).opacity, "1", "bold");
+        ok(has(root, "pg-bold")); eq(getComputedStyle(tracks[3]).opacity, "1", "bold");
         settings.set("pedalgraph", S.weight, "faint");
-        ok(has(root, "pg-faint") && !has(root, "pg-bold")); eq(getComputedStyle(bars[3][0]).opacity, "0.45", "faint");
-        eq(getComputedStyle(bars[5][0]).opacity, "0.95", "marks keep their own opacity");
+        ok(has(root, "pg-faint") && !has(root, "pg-bold")); eq(getComputedStyle(tracks[3]).opacity, "0.45", "faint");
+        eq(getComputedStyle(tracks[5]).opacity, "0.95", "marks keep their own opacity"); eq(getComputedStyle(tracks[4]).opacity, "0.55", "so does steering");
+        const w = parseFloat(bars[3][0].style.width), l1 = parseFloat(bars[3][1].style.left);
+        near(w, 2 * l1, 1e-6, "a bar spans its own slot and the whole of the next: no sub-pixel seam can open");
         settings.set("pedalgraph", S.weight, "normal");
     });
 
     t("draw order: a z-index per input strip, top of the list highest, marks above all, made whole when an item is missing", function () {
         const z = function (t) { return tracks[t].style.zIndex; };
-        eq(PedalGraph.ORDER_DEFAULT.join(","), "steering_percent,gas_percent,brake_percent,handbrake_percent,clutch_percent", "default: TRACES' draw order, top first");
-        eq([z(4), z(3), z(2), z(1), z(0)].join(","), "5,4,3,2,1", "steering on top, clutch at the bottom");
+        eq(PedalGraph.ORDER_DEFAULT.join(","), "brake_percent,clutch_percent,steering_percent,handbrake_percent,gas_percent", "default: brake on top, throttle at the bottom");
+        eq([z(2), z(0), z(4), z(1), z(3)].join(","), "5,4,3,2,1", "brake on top, throttle at the bottom");
         eq(getComputedStyle(tracks[5]).zIndex, "10", "marks above every input, from the stylesheet");
         eq(z(5), "", "the script never touches a mark's z-index");
         settings.set("pedalgraph", S.order, ["brake_percent", "gas_percent", "clutch_percent", "handbrake_percent", "steering_percent"]);
         eq([z(2), z(3), z(0), z(1), z(4)].join(","), "5,4,3,2,1", "reordered: brake now paints over throttle");
-        eq(settings.set("pedalgraph", S.order, ["clutch_percent"]).join(","), "clutch_percent,steering_percent,gas_percent,brake_percent,handbrake_percent", "a partial list is completed in the default order");
-        eq(z(0), "5", "clutch on top");
+        eq(settings.set("pedalgraph", S.order, ["gas_percent"]).join(","), "gas_percent,brake_percent,clutch_percent,steering_percent,handbrake_percent", "a partial list is completed in the default order");
+        eq(z(3), "5", "throttle on top");
         settings.reset("pedalgraph");
-        eq([z(4), z(3), z(2), z(1), z(0)].join(","), "5,4,3,2,1", "reset restores the stack");
+        eq([z(2), z(0), z(4), z(1), z(3)].join(","), "5,4,3,2,1", "reset restores the stack");
+    });
+
+    t("the wrap slot: when the incoming slot is 0 its right-hand twin is off the strip and its left-hand twin is on screen, so nothing is written", function () {
+        window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.33, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0, steering_percent: 0 };
+        const v = PedalGraph.readModel();
+        const oldN = bars[3][N].style.transform, old0 = bars[3][0].style.transform;
+        state.head = N - 1; state.lastIncoming = -1; state.lastScale[3] = "";
+        PedalGraph.renderFrame(state, v, 0.5);
+        eq(bars[3][N].style.transform, oldN, "bar N, at the left edge, keeps its sample");
+        eq(bars[3][0].style.transform, old0, "bar 0 untouched too");
+        scaleIs(levels[3], 0.33, "the level bar still follows the live value");
+        const old4 = bars[3][4].style.transform;
+        state.head = 3; state.lastIncoming = -1; state.lastScale[3] = "";
+        PedalGraph.renderFrame(state, v, 0.5);
+        scaleIs(bars[3][4 + N], 0.33, "any other slot writes its right-hand twin");
+        eq(bars[3][4].style.transform, old4, "and leaves the left-hand one alone");
+        state.head = 0; state.lastIncoming = -1;
+    });
+
+    t("every option persists: each value set to something else comes back through a reload, and so do the folds", function () {
+        const specs = settings.specs("pedalgraph");
+        const changed = {};
+        specs.forEach(function (spec) {
+            if (spec.type === "toggle") { changed[spec.key] = !settings.get("pedalgraph", spec.key); }
+            if (spec.type === "range") { changed[spec.key] = Number((settings.get("pedalgraph", spec.key) + spec.step).toFixed(2)); }
+            if (spec.type === "choice") { changed[spec.key] = spec.options[spec.options.length - 1]; }
+            if (spec.type === "order") { changed[spec.key] = settings.get("pedalgraph", spec.key).slice().reverse(); }
+            if (spec.type === "section") { settings.setCollapsed("pedalgraph", spec.key, !settings.isCollapsed("pedalgraph", spec.key)); changed[spec.key] = settings.isCollapsed("pedalgraph", spec.key); }
+        });
+        eq(Object.keys(changed).length, specs.length, "every spec has a persistence case: " + specs.map(function (s) { return s.type; }).join(","));
+        Object.keys(changed).forEach(function (key) {
+            const spec = specs.filter(function (s) { return s.key === key; })[0];
+            if (spec.type !== "section") { settings.set("pedalgraph", key, changed[key]); }
+        });
+        // a HUD reload re-runs the script, whose define() seeds every value from the stores
+        // (HUD layout store first, localStorage second); this is what it would find there
+        const values = JSON.parse(localStorage.getItem(settings.localKey("pedalgraph")));
+        const folds = JSON.parse(localStorage.getItem(settings.localKey("pedalgraph") + ".sections"));
+        Object.keys(changed).forEach(function (key) {
+            const spec = specs.filter(function (s) { return s.key === key; })[0];
+            const got = spec.type === "section" ? folds[key] : values[key];
+            eq(JSON.stringify(got), JSON.stringify(changed[key]), key + " is in the store a reload reads");
+        });
+        eq(root.style.fontSize, changed.scale + "rem", "and the live widget shows the changed scale");
+        settings.reset("pedalgraph");
+        specs.forEach(function (spec) { if (spec.type === "section") { settings.setCollapsed("pedalgraph", spec.key, Boolean(spec.collapsed)); } });
     });
 
     t("re-attach applies the stored options, and Reset to defaults puts everything back", function () {
