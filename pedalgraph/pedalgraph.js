@@ -42,10 +42,14 @@
  * writes whose value did not change are skipped.
  *
  * Three kinds of channel share that machinery and differ only in the transform
- * they write and the stylesheet's transform-origin: a pedal grows from the bottom
- * (`scaleY`), steering grows from the centre line towards its side (a `translateY`
- * and a `scaleY`, origin at the centre), and an assist mark is a thin tick along the
- * top of the graph written with 0 or 1.
+ * they write and the stylesheet's transform-origin. A pedal's bar is a trapezoid: it
+ * runs from the previous sample at its left edge to its own at the right (a
+ * `translateY` for the left height and a `skewY` for the slope, on an element twice
+ * the graph's height so its sheared bottom stays below the graph), which makes the
+ * trace piecewise linear instead of a staircase of flat columns -- a clutch blip six
+ * samples long is a spike, not a comb. Steering grows from the centre line towards
+ * its side (a `translateY` and a `scaleY`, origin at the centre), and an assist mark
+ * is a thin tick along the top of the graph written with 0 or 1.
  *
  * Options (the app drawer's OPTIONS button opens them): panel scale, the seconds of
  * history across the graph, the plot height, the trace weight, which channels are
@@ -94,6 +98,19 @@ const PedalGraph = (function () {
     const PERCENT = 100;
     /** Horizontal reference lines, as percent of the graph height from the top. */
     const GRID_LINES_PCT = [25, 50, 75];
+
+    /**
+     * A pedal's bar is twice the graph tall (pedalgraph.css), so moving its top edge by
+     * one unit of value is half its own height: translateY((1 - value) * 50%). The slope
+     * to the next sample is a skewY whose tangent is the rise in graph pixels over the
+     * bar's width in pixels: rise * (graph height / bar width) = rise * ASPECT, where
+     * ASPECT is measured from the graph once it has a size (see measureAspect). Slopes are
+     * written in degrees to three decimals: a steep bar is within a degree of vertical,
+     * where the tangent is so sensitive that two decimals put the top a pixel out.
+     */
+    const HALF_HEIGHT_PCT = 50;
+    const DEG_PER_RAD = 180 / Math.PI;
+    const SKEW_DECIMALS = 3;
 
     /**
      * A centred bar (steering) spans from the centre line to its value: scaled to half
@@ -371,8 +388,27 @@ const PedalGraph = (function () {
         return (value < 0 ? LEFT_TEXT : RIGHT_TEXT) + " " + pct;
     };
 
-    /** Per channel: how its value becomes a transform, and a readout (null for a mark). */
-    const TRANSFORMS = TRACES.map(function (trace) {
+    /**
+     * A pedal's bar: from the previous sample (`from`, its left edge) to this one (`to`,
+     * its right). `aspect` is graph height over bar width, in pixels (measureAspect).
+     */
+    const trapezoidTransform = function (aspect, from, to) {
+        return "translateY(" + ((1 - from) * HALF_HEIGHT_PCT).toFixed(SHIFT_DECIMALS) + "%) skewY("
+            + (-Math.atan((to - from) * aspect) * DEG_PER_RAD).toFixed(SKEW_DECIMALS) + "deg)";
+    };
+
+    /**
+     * Per channel: how a bar is written from the previous and the current value, how
+     * its level bar is written from the current value alone, and its readout (null for
+     * a mark). Only a pedal's bar uses the previous value; steering's centred bar and a
+     * mark's tick are flat.
+     */
+    const barTransform = function (aspect, trace, from, to) {
+        if (trace.kind === KIND.level) { return trapezoidTransform(aspect, from, to); }
+
+        return trace.kind === KIND.centred ? centredTransform(to) : scaleTransform(to);
+    };
+    const LEVEL_TRANSFORMS = TRACES.map(function (trace) {
         return trace.kind === KIND.centred ? centredTransform : scaleTransform;
     });
     const TEXTS = TRACES.map(function (trace) {
@@ -511,6 +547,8 @@ const PedalGraph = (function () {
             levels: TRACES.map(function (trace, t) { return forTrace(root, CLASS.level, t, " > ." + CLASS.fill); }),
             vals: TRACES.map(function (trace, t) { return forTrace(root, CLASS.item, t, " ." + CLASS.value); }),
             noData: root.querySelector("." + CLASS.noData),
+            graph: root.querySelector("." + CLASS.graph),
+            aspect: 0,                  // graph height over bar width, in pixels; 0 until the graph has a size
             unsubscribeSettings: null,
             head: 0,                    // index of the last committed sample
             lastIncoming: -1,           // slot that last received the live value
@@ -518,6 +556,7 @@ const PedalGraph = (function () {
             lastLog: 0,
             lastPct: TRACES.map(function () { return ""; }),
             lastScale: TRACES.map(function () { return ""; }),
+            lastSample: TRACES.map(function () { return 0; }),   // per channel: the last committed value, a trapezoid's left edge
             shown: TRACES.map(function () { return true; }),   // per channel: drawn, or switched off in the options
             levelsOn: true,             // the level bars are drawn
             readoutsOn: true,           // the legend values are written
@@ -525,6 +564,20 @@ const PedalGraph = (function () {
             scaler: null,               // me.scale handle: the loader owns panel scaling
             ui: null                    // me.panel handle: the panel and its frame loop
         };
+    };
+
+    /**
+     * Graph height over bar width, in pixels: what a slope's skew angle is made of. Read
+     * from the layout, so it is 0 until the graph has a size (the first frames after
+     * attach) and is cleared to 0 whenever the layout changes (plot height, scale), to
+     * be read again on the next frame once Cohtml has laid the change out.
+     */
+    const measureAspect = function (state) {
+        const graph = state.graph;
+
+        if (graph && graph.offsetWidth > 0) { state.aspect = graph.offsetHeight * N / graph.offsetWidth; }
+
+        return state.aspect;
     };
 
     // ---- options -----------------------------------------------------------------
@@ -559,6 +612,8 @@ const PedalGraph = (function () {
         setClass(state.root, CLASS.bold, options[SETTING.weight] === WEIGHT_BOLD);
         setClass(state.root, CLASS.bgLight, options[SETTING.bg] === BACKGROUND_LIGHT);
         setClass(state.root, CLASS.bgNone, options[SETTING.bg] === BACKGROUND_NONE);
+        // the plot height may have changed: the slopes' aspect is stale until the next frame
+        state.aspect = 0;
     };
 
     /** Stack the input strips in the chosen order: the first in the list gets the highest z-index. */
@@ -742,7 +797,8 @@ const PedalGraph = (function () {
         const slot = (state.head + 1) % N;
 
         state.tracks.forEach(function (track, t) {
-            setSlot(track, slot, TRANSFORMS[t](v[t]));
+            setSlot(track, slot, barTransform(state.aspect, TRACES[t], state.lastSample[t], v[t]));
+            state.lastSample[t] = v[t];
         });
 
         state.head = slot;
@@ -764,7 +820,8 @@ const PedalGraph = (function () {
         state.tracks.forEach(function (track, t) {
             if (!state.shown[t]) { return; }
 
-            const scale = TRANSFORMS[t](v[t]);
+            // the incoming bar runs from the last committed sample to the live value
+            const scale = barTransform(state.aspect, TRACES[t], state.lastSample[t], v[t]);
 
             track.el.style.transform = shift;
 
@@ -772,7 +829,7 @@ const PedalGraph = (function () {
                 state.lastScale[t] = scale;
                 setIncoming(track, incoming, scale);
 
-                if (state.levelsOn && state.levels[t]) { state.levels[t].style.transform = scale; }
+                if (state.levelsOn && state.levels[t]) { state.levels[t].style.transform = LEVEL_TRANSFORMS[t](v[t]); }
             } else if (slotAdvanced) {
                 // value unchanged but the incoming slot moved on: it still needs the live value
                 setIncoming(track, incoming, scale);
@@ -812,6 +869,10 @@ const PedalGraph = (function () {
 
             return;
         }
+
+        // the slopes need the graph's size, which the first frames after attach, and the
+        // first after a layout change, do not have yet
+        if (state.aspect === 0) { measureAspect(state); }
 
         // history at the fixed rate (catches up after short hitches, restarts after a stall)
         const frac = ACEUIAppLoader.loop.advance(state.sampler, now, function () {
@@ -895,6 +956,8 @@ const PedalGraph = (function () {
         attract: function (on) { return current ? setAttract(current, on) : false; },
         applyView: applyView,
         applyOrder: applyOrder,
+        measureAspect: measureAspect,
+        trapezoidTransform: trapezoidTransform,
         ORDER_DEFAULT: ORDER_DEFAULT,
         commitSample: commitSample,
         renderFrame: renderFrame,

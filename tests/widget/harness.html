@@ -34,6 +34,15 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const me = ACEUIAppLoader.app("pedalgraph");
     const scaleOf = function (el) { const m = /scaleY\((-?[\d.]+)\)/.exec(el.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     const scaleIs = function (el, v, what) { near(scaleOf(el), v, 1e-6, what); };
+    /** A pedal's bar: translateY((1 - from) * 50%) skewY(deg); `to` is recovered through the graph's measured aspect. */
+    const barOf = function (el) { const m = /translateY\((-?[\d.]+)%\) skewY\((-?[\d.]+)deg\)/.exec(el.style.transform || ""); return m ? { from: 1 - parseFloat(m[1]) / 50, skew: parseFloat(m[2]) } : null; };
+    const barTo = function (b) { return b.from - Math.tan(b.skew * Math.PI / 180) / state.aspect; };
+    const barIs = function (el, from, to, what) {
+        const b = barOf(el);
+        ok(b, what + ": a trapezoid, got " + JSON.stringify(el.style.transform));
+        if (b) { near(b.from, from, 1e-5, what + " (left edge)"); near(barTo(b), to, 1e-3, what + " (right edge)"); }
+    };
+    const barEmpty = function (el, what) { eq(el.style.transform, "", what); };
     /** A centred (steering) transform, parsed: { shift: translateY %, scale: scaleY }. */
     const centredOf = function (el) {
         const m = /translateY\((-?[\d.]+)%\) scaleY\((-?[\d.]+)\)/.exec(el.style.transform || "");
@@ -100,11 +109,12 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
 
     t("history commits at the fixed rate into slot head+1 in both halves", function () {
         clock.step(1000 + SAMPLE_MS);          // exactly one sample period later
-        scaleIs(bars[3][1], 0.5, "slot 1");
-        scaleIs(bars[3][1 + N], 0.5, "slot 1+N");
-        scaleIs(bars[3][2 + N], 0.5, "slot 2 is the incoming live bar, written at the right edge only");
-        scaleIs(bars[3][2], 0.0, "its twin at the left edge keeps the old sample (none yet)");
-        scaleIs(bars[3][3], 0.0, "slot 3 untouched");
+        ok(state.aspect > 0, "the graph has a size, so slopes can be drawn: aspect " + state.aspect);
+        barIs(bars[3][1], 0, 0.5, "slot 1 climbs from nothing (no earlier sample) to the first sample");
+        barIs(bars[3][1 + N], 0, 0.5, "slot 1+N");
+        barIs(bars[3][2 + N], 0.5, 0.5, "slot 2 is the incoming live bar, written at the right edge only, level from the last sample to the live value");
+        barEmpty(bars[3][2], "its twin at the left edge keeps the old sample (none yet)");
+        barEmpty(bars[3][3], "slot 3 untouched");
         eq(state.head, 1, "head advanced");
     });
 
@@ -119,21 +129,22 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         window.ModelCurrentCar.gas_percent = 0.8;
         clock.step(1000 + SAMPLE_MS * 6);       // 6 periods since start => slots 1..6 committed
         let i;
-        for (i = 2; i <= 6; i += 1) { scaleIs(bars[3][i], 0.8, "slot " + i); }
-        scaleIs(bars[3][7 + N], 0.8, "incoming slot 7 holds live value");
-        scaleIs(bars[3][8], 0.0, "slot 8 untouched");
+        barIs(bars[3][2], 0.5, 0.8, "slot 2 slopes from the earlier sample to the new value");
+        for (i = 3; i <= 6; i += 1) { barIs(bars[3][i], 0.8, 0.8, "slot " + i); }
+        barIs(bars[3][7 + N], 0.8, 0.8, "incoming slot 7 holds live value");
+        barEmpty(bars[3][8], "slot 8 untouched");
         eq(state.head, 6, "head");
     });
 
     t("a stall longer than the window resets the clock instead of replaying", function () {
         window.ModelCurrentCar.gas_percent = 0.1;
         clock.step(1000 + SAMPLE_MS * 6 + 20000);   // 20 s stall
-        scaleIs(bars[3][7 + N], 0.1, "incoming slot got live value");
-        scaleIs(bars[3][8], 0.0, "no mass replay into slot 8");
+        barIs(bars[3][7 + N], 0.8, 0.1, "incoming slot slopes from the last sample to the live value");
+        barEmpty(bars[3][8], "no mass replay into slot 8");
         eq(state.head, 6, "head unchanged by the stall");
         clock.step(1000 + SAMPLE_MS * 6 + 20000 + SAMPLE_MS);
-        scaleIs(bars[3][7], 0.1, "slot 7 committed");
-        scaleIs(bars[3][8 + N], 0.1, "slot 8 is the new incoming");
+        barIs(bars[3][7], 0.8, 0.1, "slot 7 committed as the slope");
+        barIs(bars[3][8 + N], 0.1, 0.1, "slot 8 is the new incoming");
     });
 
     t("values are clamped to 0..1 and readouts only update on change", function () {
@@ -276,7 +287,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(tracks[3].style.transform, shiftBefore, "a hidden strip is not shifted");
         eq(vals[3].textContent, readoutBefore, "nor its readout written");
         ok(tracks[2].style.transform !== shiftBefore, "the others still draw");
-        scaleIs(bars[3][state.head], 0.9, "but its history slot was committed");
+        near(barTo(barOf(bars[3][state.head])), 0.9, 1e-3, "but its history slot was committed");
         settings.set("pedalgraph", "showThrottle", true);
         ok(!has(items[3], "pg-off") && !has(tracks[3], "pg-off") && !has(boxes[3], "pg-off"), "all three back");
         eq(state.lastScale[3], "", "cache cleared so the next frame rewrites it");
@@ -388,6 +399,30 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         window.ModelCurrentCar.steering_percent = 0;
     });
 
+    t("trapezoids: a pedal's bar slopes from the previous sample to its own, on an element twice the graph tall; steering and marks stay flat", function () {
+        const graph = root.querySelector(".pg-graph");
+        eq(state.aspect, 0, "a view change clears the aspect: the layout it depends on is stale until the next frame");
+        clock.step(234000);
+        near(state.aspect, graph.offsetHeight * N / graph.offsetWidth, 1e-9, "the next frame measures it: graph height over bar width, in pixels");
+        eq(PedalGraph.trapezoidTransform(0, 0.2, 0.6), "translateY(40.0000%) skewY(0.000deg)", "no aspect yet: a level bar at the left value");
+        const t1 = PedalGraph.trapezoidTransform(77, 0.2, 0.6);
+        eq(t1.indexOf("translateY(40.0000%) skewY(-"), 0, "a rise is a negative skew (up)"); near(parseFloat(/skewY\((-?[\d.]+)deg/.exec(t1)[1]), -Math.atan(0.4 * 77) * 180 / Math.PI, 1e-3);
+        eq(PedalGraph.trapezoidTransform(77, 1, 1), "translateY(0.0000%) skewY(0.000deg)", "full and level: top edge at the graph's top");
+        eq(getComputedStyle(bars[3][0]).height, (2 * graph.offsetHeight) + "px", "a pedal's bar is twice the graph tall, so its sheared bottom stays below the graph");
+        eq(getComputedStyle(bars[3][0]).transformOrigin, "0px 0px", "sheared about its top-left corner");
+        settings.set("pedalgraph", "showSteering", true); settings.set("pedalgraph", "markAbs", true);
+        eq(getComputedStyle(bars[4][0]).height, graph.offsetHeight + "px", "steering's bar is the graph's height"); eq(getComputedStyle(bars[5][0]).transformOrigin.split(" ")[1], "0px", "a mark's tick grows from the top");
+        settings.set("pedalgraph", "showSteering", false); settings.set("pedalgraph", "markAbs", false);
+        window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.2, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0, steering_percent: 0.5 };
+        const t0 = 235000;                                       // between the steering case and the marks case, which follows at 240 s
+        clock.step(t0); clock.step(t0 + SAMPLE_MS);            // one sample at 0.2
+        window.ModelCurrentCar.gas_percent = 0.6;
+        clock.step(t0 + SAMPLE_MS * 2);                          // one at 0.6: its bar slopes 0.2 -> 0.6
+        barIs(bars[3][state.head], 0.2, 0.6, "a committed bar slopes from the previous sample to its own");
+        eq(bars[4][state.head].style.transform.indexOf("skewY"), -1, "steering's bar is not skewed");
+        window.ModelCurrentCar.steering_percent = 0;
+    });
+
     t("assist marks: a boolean becomes a 0/1 tick along the top, with a legend entry and no readout or level bar", function () {
         eq(state.vals[5], null, "no readout for a mark"); eq(state.levels[5], null, "no level bar for a mark"); eq(state.levelBoxes[5], null);
         ok(has(state.items[5], "pg-mark"), "legend entry carries pg-mark"); eq(state.items[5].querySelector(".pg-val"), null, "and has no value");
@@ -449,6 +484,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     t("the wrap slot: when the incoming slot is 0 its right-hand twin is off the strip and its left-hand twin is on screen, so nothing is written", function () {
         window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.33, brake_percent: 0, clutch_percent: 0, handbrake_percent: 0, steering_percent: 0 };
         const v = PedalGraph.readModel();
+        PedalGraph.measureAspect(state);                         // a view change cleared it; renderFrame is called here without a tick
         const oldN = bars[3][N].style.transform, old0 = bars[3][0].style.transform;
         state.head = N - 1; state.lastIncoming = -1; state.lastScale[3] = "";
         PedalGraph.renderFrame(state, v, 0.5);
@@ -458,7 +494,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const old4 = bars[3][4].style.transform;
         state.head = 3; state.lastIncoming = -1; state.lastScale[3] = "";
         PedalGraph.renderFrame(state, v, 0.5);
-        scaleIs(bars[3][4 + N], 0.33, "any other slot writes its right-hand twin");
+        near(barTo(barOf(bars[3][4 + N])), 0.33, 1e-3, "any other slot writes its right-hand twin");
         eq(bars[3][4].style.transform, old4, "and leaves the left-hand one alone");
         state.head = 0; state.lastIncoming = -1;
     });

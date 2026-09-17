@@ -60,7 +60,7 @@ The widget reads the game's `ModelCurrentCar` (`gas_percent`, `brake_percent`, `
 | `me.scale` | the panel scale, as one font-size on the root |
 | `ACEUIAppLoader.app("pedalgraph")` | name, version, title, root, logger and storage keys — so none of them is repeated in the source |
 
-It writes no colours or sizes, only transforms and classes; every class name, timing and precision is a named constant. The version lives in `pedalgraph/app.json` and nowhere else.
+Each pedal's bar is a trapezoid from the previous sample to its own (a `translateY` and a `skewY`), so a trace is piecewise linear rather than a staircase of columns, and a fast clutch blip is a spike rather than a comb. It writes no colours or sizes, only transforms and classes; every class name, timing and precision is a named constant. The version lives in `pedalgraph/app.json` and nowhere else.
 
 ## Preview outside the game
 

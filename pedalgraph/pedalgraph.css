@@ -235,18 +235,27 @@ body.hide-hud .ace-pedalgraph {
    newest committed bar sits just off the LEFT edge of the window, and reaching right
    poked the newest value into the oldest slot on screen as a hairline that followed the
    pedals. Not calc(% - px) inline: Cohtml did not apply it and the bars vanished. */
+/* A pedal's bar is a trapezoid (see trapezoidTransform in pedalgraph.js): twice the
+   graph tall, sheared about its top-left corner so its top edge slopes from the previous
+   sample to its own while its bottom stays below the graph, where overflow: hidden
+   clips it. The default transform keeps an unwritten bar invisible. */
 .ace-pedalgraph .pg-bar {
     position: absolute;
     top: 0;
-    height: 100%;
+    height: 200%;
     margin-left: -1.5px;
     padding-right: 1.5px;
-    transform-origin: 50% 100%;
+    transform-origin: 0 0;
     transform: scaleY(0);
 }
 
-/* steering grows from the centre line, both in its strip and in its level bar */
-.ace-pedalgraph .pg-track[data-trace="4"] .pg-bar,
+/* steering grows from the centre line, both in its strip and in its level bar: a flat
+   bar the height of the graph, scaled about its middle */
+.ace-pedalgraph .pg-track[data-trace="4"] .pg-bar {
+    height: 100%;
+    transform-origin: 50% 50%;
+}
+
 .ace-pedalgraph .pg-lvl[data-trace="4"] > div {
     transform-origin: 50% 50%;
 }

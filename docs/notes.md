@@ -101,10 +101,22 @@ are opaque: translucent bars overlapping would double up, so the trace's translu
 is the strip's `opacity`, which composites its bars as one shape. The trace weight
 option and steering's and the marks' own opacities are on the strip for the same reason.
 
-What remains is the staircase itself: 250 samples across the graph is a step every
-couple of pixels, and a steep pedal movement shows them. Finer would need more bars
-(DOM, and per-frame writes) or a different drawing primitive; both are open questions,
-not oversights.
+## Trapezoids, not columns
+
+250 samples across the graph is a column every couple of pixels, and a fast movement
+-- a clutch blip is five or six samples -- drew as a comb of columns of different
+heights. Doubling the bars would halve the teeth and double the DOM. Instead each
+pedal's bar is a trapezoid from the previous sample at its left edge to its own at the
+right: `translateY((1 - from) * 50%) skewY(-atan((to - from) * aspect))` on an element
+twice the graph tall, sheared about its top-left corner, so its top edge slopes and
+its bottom stays below the graph where `overflow: hidden` clips it. `aspect` is graph
+height over bar width in pixels, read from the layout once the graph has a size and
+re-read after a layout change (the first frame after attach or a plot-height change
+draws level bars). The incoming bar runs from the last committed sample to the live
+value across a whole slot although only a fraction of it is on screen, so the right
+edge lags the live value by at most one sample period; the exact slope would divide
+by that fraction and flicker just after each commit. Steering (centred) and the marks
+(0/1 ticks) keep flat bars: a sheared bar has no flat bottom to sit on the centre line.
 
 When an input, the level bars or the readouts come back, the per-frame caches
 (`lastScale`, `lastPct`) are cleared so the next frame rewrites them; otherwise
