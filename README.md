@@ -1,108 +1,164 @@
-# ACE PedalGraph
+<div align="center">
 
-A HUD widget for Assetto Corsa EVO that draws a scrolling graph of throttle, brake, clutch, handbrake and steering input, with marks where ABS, TC or ESC stepped in, loaded by the [ACE UI App Loader](https://github.com/dreasgrech/ACEUIAppLoader) and built on its library.
+# ACE Pedal Graph
 
-It is also the **reference app**: the smallest complete example of the shape every other app here follows, and the one to copy from.
+**Your pedals, as a scrolling graph on the HUD of Assetto Corsa EVO.**<br>
 
-<p align="center"><img src="docs/images/widget.png" width="60%" alt="The widget: throttle, brake, clutch and handbrake as a scrolling graph, with a level bar per input"></p>
-<p align="center"><img src="docs/images/widget-all.png" width="60%" alt="Every channel on: steering drawn from the centre line, and ABS / TC / ESC ticks along the top"><br><sub>Rendered by <code>dev/preview.html</code> with the game's typeface; in game the panel sits over the track.</sub></p>
+[![Latest release](https://img.shields.io/github/v/release/dreasgrech/ACEPedalGraph?style=flat-square&label=download&color=0a7)](../../releases/latest)
+[![Needs](https://img.shields.io/badge/needs-ACE_UI_App_Loader-informational?style=flat-square)](https://github.com/dreasgrech/ACEUIAppLoader)
+[![Downloads](https://img.shields.io/github/downloads/dreasgrech/ACEPedalGraph/total?style=flat-square&color=555)](../../releases)
+[![Issues](https://img.shields.io/github/issues/dreasgrech/ACEPedalGraph?style=flat-square&color=555)](../../issues)
 
-## Installing
+[Install](#install) · [Options](#options) · [Help](#if-something-isnt-right) · [Developers](#for-developers)
 
-With the loader installed, this app is a folder and an empty marker file:
+</div>
+
+<p align="center"><img src="docs/images/widget.png" width="70%" alt="Throttle, brake, clutch and handbrake as a scrolling graph, with a level bar for each"></p>
+
+Throttle, brake, clutch and handbrake scroll across the graph as you drive, each with a live
+level bar beside it. Turn on steering and it draws from the centre line; turn on the assist
+marks and a tick appears wherever ABS, TC or ESC stepped in. Drag it anywhere on the HUD and it
+stays there.
+
+---
+
+## Install
+
+This is an app for the [ACE UI App Loader](https://github.com/dreasgrech/ACEUIAppLoader).
+Install that first.
+
+<table>
+<tr><td width="40" align="center"><h3>1</h3></td><td>
+
+Download the **`ACEPedalGraph-….zip`** from the [latest release](../../releases/latest) and open it.
+Inside are two folders, `mods` and `Video`.
+
+</td></tr>
+<tr><td align="center"><h3>2</h3></td><td>
+
+Press <kbd>Win</kbd> + <kbd>R</kbd>, paste this in, press <kbd>Enter</kbd>:
 
 ```
-Saved Games\ACE\mods\uiresources\ACEUIAppLoader\pedalgraph\
-Saved Games\ACE\Video\ACEUIAppLoader-pedalgraph.settingspreset
+%USERPROFILE%\Saved Games\ACE
 ```
 
-It overrides no game file — it is a loose folder the game reads, found through its marker.
+</td></tr>
+<tr><td align="center"><h3>3</h3></td><td>
 
-From a checkout, with the loader repo beside this one:
+Drag **both** folders out of the zip into that window. If Windows asks, choose to **merge**.
+Nothing to run.
 
-```
-python ..\ACEUIAppLoader\tools\install_app.py pedalgraph
-python ..\ACEUIAppLoader\tools\install_app.py --remove pedalgraph
-```
+</td></tr>
+</table>
 
-Escape and resume in the car reloads the HUD and picks up changes.
+In the car, move your mouse to the right edge of the screen. The graph is listed in the app
+drawer with its own switch and an **OPTIONS** button.
+
+---
 
 ## Options
 
-The app drawer's **OPTIONS** button opens the widget's settings window. Everything is stored by the loader and survives the HUD reload and a restart. The window is in five sections; click a header to fold it, and the fold is remembered.
+<p align="center"><img src="docs/images/widget-all.png" width="70%" alt="Every channel on: steering drawn from the centre line, ABS, TC and ESC ticks along the top"></p>
 
-| Section | Option | What it does |
-|---|---|---|
-| **Layout** | Panel scale | 0.6 to 2, in steps of 0.1. One font-size on the root; everything inside is sized in em. |
-| | History | 3 s, 5 s or 10 s of input across the graph. The bar count is fixed, so a longer window is a slower sampler (83, 50 or 25 Hz). |
-| | Plot height | `low`, `normal` or `tall`: a wide low strip under the car, or a taller graph for reading trail-braking. |
-| **Inputs** | Throttle, Brake, Handbrake, Clutch, Steering | Draw or hide each input: its legend entry, its trace and its level bar. A hidden input keeps recording, so switching it back on shows the history it has. Steering is off by default; it draws from the centre line, right upward, and its readout says which way (`L 42%`). |
-| **Assist marks** | ABS, TC, ESC | Off by default. A thin tick along the top of the graph, one row each, wherever that assist was active: where the electronics stepped in against your inputs. |
-| **Look** (folded) | Traces | `faint`, `normal` or `bold`: how solid the bars are drawn, for over a busy background or none. |
-| | Background | `dark` (the default), `light`, or `none` for just the traces over the game. |
-| | Level bars | The live value of each input, beside the graph. |
-| | Readouts | The live value of each input, in the legend. |
-| | Grid lines | The 25 / 50 / 75 % reference lines. |
-| **Draw order** (folded) | a list you drag | Which input paints over which: the top of the list is drawn on top. Default is brake, clutch, steering, handbrake, throttle. The assist marks always sit above. |
-| **Demo** (folded) | Attract mode | Scripted inputs, for recording without driving. `PedalGraph.attract(true)` in the dev console does the same. |
-
-**Reset to defaults** at the bottom puts every value back (the folds stay as you left them). Nothing hidden costs a frame: every option is a class on a fixed element, and the loop skips the writes for what is not drawn.
-
-## What it is made of
-
-The widget reads the game's `ModelCurrentCar` (`gas_percent`, `brake_percent`, `clutch_percent`, `handbrake_percent`, `steering_percent`, and the `abs_active` / `tc_active` / `esc_active` flags) and animates a fixed set of bars with CSS transforms. Steering is signed, −1 to 1, the range the stock speedo clamps it to. Everything that is not the graph comes from the library:
+**OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept,
+through the HUD reload and a restart. Click a section header to fold it.
 
 | | |
 |---|---|
-| `ACEUIAppLoader.panel` | drag, and a position stored as a fraction of the screen so it survives the HUD reload |
-| `ACEUIAppLoader.loop` | the frame loop and the fixed-rate sampler |
-| `ACEUIAppLoader.settings` | the options: declared once, stored by the loader, drawn in the app's settings window |
-| `me.scale` | the panel scale, as one font-size on the root |
-| `ACEUIAppLoader.app("pedalgraph")` | name, version, title, root, logger and storage keys — so none of them is repeated in the source |
+| **Layout** | Panel scale, how many seconds of driving the graph shows (3, 5 or 10), and a low, normal or tall plot. |
+| **Inputs** | Which of throttle, brake, clutch, handbrake and steering are drawn. A hidden one keeps recording, so it has its history when you turn it back on. |
+| **Assist marks** | ABS, TC and ESC: a tick along the top wherever the electronics stepped in. Off by default. |
+| **Look** | Faint, normal or bold traces; a dark, light or no background; level bars, readouts and grid lines on or off. |
+| **Draw order** | Drag to choose which input paints over which. |
+| **Demo** | Attract mode: scripted inputs, for recording without driving. |
 
-Each pedal's bar is a trapezoid from the previous sample to its own (a `translateY` and a `skewY`), so a trace is piecewise linear rather than a staircase of columns, and a fast clutch blip is a spike rather than a comb. It writes no colours or sizes, only transforms and classes; every class name, timing and precision is a named constant. The version lives in `pedalgraph/app.json` and nowhere else.
+**Reset to defaults** puts every value back.
 
-## Preview outside the game
+---
 
-Open `dev/preview.html` in Edge or Chrome — double-click, no server needed. It loads the library from the sibling loader checkout, then the real `pedalgraph.css` and `pedalgraph.js`, inside a 16:9 stand-in for the game's HUD container, and feeds them a fake `ModelCurrentCar`.
+## If something isn't right
 
-- `W` throttle, `S` brake, `A` clutch, `Space` handbrake, `←` `→` steering, with pedal travel smoothing — or leave **auto demo** on for a scripted lap; the fake car's ABS works under hard braking and its TC on a full throttle
-- **hide HUD** toggles `body.hide-hud` like the game's own HUD toggle
-- **focused car** toggles `has_focused_car`, the spectator case
-- **reset position** clears the stored position; dragging persists as it does in game
-- **options** opens the same settings window the app drawer opens in game
-- flags after `#` in the URL: `#all` switches every channel and mark on, `#options` opens the settings window, `#reset` restores the defaults, `#shot` drives frames from timers for headless screenshots (comma-separate to combine: `preview.html#all,options`)
+<details>
+<summary><b>It isn't in the app drawer</b></summary><br>
 
-Run `python tools/preview_fonts.py` once to copy the game's typeface (Rajdhani) out of the installed game beside the preview; until then a system font stands in. The copies land in `dev/fonts/`, which git ignores.
+1. **The loader isn't installed**, or its drawer doesn't appear at all. Start with the
+   [loader's own help](https://github.com/dreasgrech/ACEUIAppLoader#if-something-isnt-right).
+2. **Only one of the two folders was copied.** The app needs both: the folder under `mods`
+   and the small file under `Video`. That file must stay completely empty.
 
-What it cannot show: anything Cohtml-specific (this is Chromium), the stock HUD around the widget, and the game's font. Per-frame rendering still needs one real launch — see [`docs/notes.md`](docs/notes.md).
+</details>
 
-## Tests
+<details>
+<summary><b>It's there but the graph is flat</b></summary><br>
 
-```
-python -m unittest discover -s tests -v
-```
+It draws your own car's inputs, so it only moves once you are driving. Spectating shows the
+car you are watching.
 
-`tests/test_app.py` runs the loader's shared test kit pointed at this repo, plus the widget's own contract; `tests/widget/harness.html` holds the browser cases. Clone `ACEUIAppLoader` and `ACEGameInternals` beside this repo — the preview and the tests load the library and the shared fixtures from `../ACEUIAppLoader/`.
+</details>
 
-## Layout
+<details>
+<summary><b>Anything else</b></summary><br>
+
+Open an [issue](../../issues) and say what you saw. If you can, attach the newest file from
+`%USERPROFILE%\Saved Games\ACE\Logs`.
+
+</details>
+
+---
+
+## Uninstalling
+
+Delete the folder `mods\uiresources\ACEUIAppLoader\pedalgraph` and the file
+`Video\ACEUIAppLoader-pedalgraph.settingspreset`, both under `Saved Games\ACE`. Your settings
+stay in the game's UI settings file, where the game ignores them.
+
+---
+
+## For developers
+
+This is the loader's **reference app**: the smallest complete example of the shape every app
+follows, and the one to copy from. It is one folder with three files and no build step.
 
 ```
 pedalgraph/
   app.json          version, title, stylesheet and script
   pedalgraph.js     the widget: PedalGraph.attach(root) / .detach(state)
-  pedalgraph.css    all styling in em, channel colours keyed by data-trace index, one class per option
-dev/preview.html    the widget outside the game
-tools/preview_fonts.py   copies the game's font beside the preview (into dev/fonts/, ignored)
-docs/images/        the two renders above
-tests/
-  test_app.py       the shared kit plus this app's contract
-  widget/harness.html   the browser cases
-docs/notes.md       rendering rules, versioning, and how to verify a change in game
+  pedalgraph.css    all styling in em, one class per option
 ```
 
-### Style
+The widget reads the game's `ModelCurrentCar` and animates a fixed set of bars with CSS
+transforms, nothing else per frame. Each pedal's bar is a trapezoid from the previous sample
+to its own, so a trace is piecewise linear rather than a staircase. Everything that is not
+the graph comes from the loader's library: the panel, the frame loop, the settings window,
+the panel scale, and the app's own identity.
 
-No classes, no `this`, no `var`, no arrow functions, no function declarations; one self-invoking module per file, four-space indent, double quotes. The loader's test kit enforces it — see [`docs/style.md`](https://github.com/dreasgrech/ACEUIAppLoader/blob/main/docs/style.md) there.
+<details>
+<summary><b>Working on it</b></summary><br>
 
-Everything learned about the game and its UI engine lives in [`ACEGameInternals`](https://github.com/dreasgrech/ACEGameInternals).
+Clone [`ACEUIAppLoader`](https://github.com/dreasgrech/ACEUIAppLoader) and
+[`ACEGameInternals`](https://github.com/dreasgrech/ACEGameInternals) beside this repo.
+
+```
+python ..\ACEUIAppLoader\tools\install_app.py pedalgraph     # install this checkout; Escape and resume reloads it
+python -m unittest discover -s tests -v                       # the shared kit plus the widget's own cases
+python tools\preview_fonts.py                                 # once: the game's typeface for the preview
+python ..\ACEUIAppLoader\tools\release_app.py pedalgraph      # the release zip, into dist/
+```
+
+`dev/preview.html` runs the widget outside the game in Edge or Chrome: `W` `S` `A` `Space`
+and the arrow keys drive a fake car, or leave the demo on. It cannot show anything
+Cohtml-specific, so a change still needs one launch and a look at the log.
+
+| | |
+|---|---|
+| [`docs/notes.md`](docs/notes.md) | rendering rules, what the game's engine does differently, how to verify a change in game |
+| [`docs/writing-an-app.md`](https://github.com/dreasgrech/ACEUIAppLoader/blob/main/docs/writing-an-app.md) | the app lifecycle and `app.json`, in the loader repo |
+| [`docs/style.md`](https://github.com/dreasgrech/ACEUIAppLoader/blob/main/docs/style.md) | the JavaScript rules the test kit enforces |
+
+</details>
+
+---
+
+<div align="center">
+<sub>Pedal Graph 0.8.1 · needs ACE UI App Loader 0.23.0 or newer</sub>
+</div>

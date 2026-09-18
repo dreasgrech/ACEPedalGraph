@@ -55,5 +55,30 @@ class WidgetContractTests(unittest.TestCase):
         self.assertNotIn("rem", inside, "lengths inside the panel must be em, not rem, or the scale option skips them")
 
 
+class ReadmeTests(unittest.TestCase):
+    """The README is the release page. It has to say which version it describes and show
+    pictures that exist; a stale number or a broken image is the first thing a visitor sees."""
+
+    def setUp(self):
+        import json
+        import re
+        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as f:
+            self.readme = f.read()
+        with open(os.path.join(ROOT, "pedalgraph", "app.json"), encoding="utf-8") as f:
+            self.version = json.load(f)["version"]
+        self.re = re
+
+    def test_it_states_the_version_of_app_json(self):
+        self.assertIn(self.version, self.readme, "the README's version must be app.json's")
+
+    def test_every_picture_it_promises_is_actually_there(self):
+        for src in self.re.findall(r'src="(docs/images/[^"]+)"', self.readme):
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, src)), src)
+
+    def test_it_installs_the_way_the_release_zip_is_built(self):
+        self.assertIn("Saved Games\\ACE", self.readme)
+        self.assertIn("releases/latest", self.readme, "it points at the download")
+
+
 if __name__ == "__main__":
     unittest.main()

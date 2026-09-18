@@ -158,11 +158,24 @@ Judged from `dev/preview.html` rendered headless at 2.5x with the game's font
 Chromium run with `--virtual-time-budget` delivers exactly one animation frame, so the
 preview's `#shot` flag drives frames from timers for that purpose.
 
+## Releasing
+
+```
+python ..\ACEUIAppLoader\tools\release_app.py pedalgraph
+```
+
+writes `dist/ACEPedalGraph-<version>.zip`: the app folder under `mods\uiresources\ACEUIAppLoader\`
+and the empty marker under `Video\`, laid out as the contents of `Saved Games\ACE`, exactly
+what `install_app.py` puts on disk. It refuses a dirty tree and runs this suite first. The
+version is `pedalgraph/app.json`'s and the README must state it (tested). Before uploading:
+extract that zip into `Saved Games\ACE` here, launch, and check the log the way the section
+below says.
+
 ## Verifying in game
 
 The game writes UI `console.log` output into `Saved Games\ACE\Logs\log-*.txt`
 as `[gameface]` lines. Run `python ..\ACEUIAppLoader\tools\check_ingame_log.py`
 after playing: `[ACEUIAppLoader] app pedalgraph <version>: loading` followed by
-`[PedalGraph] script loaded, ... source=ACEUIAppLoader` means the loader served the
-app, `sampling ok` once a minute means car data is flowing, and the position
+`[PedalGraph] script loaded, version <version>, library <loader version>` means the
+loader served the app, `sampling ok` once a minute means car data is flowing, and the position
 save/restore lines show persistence working.
