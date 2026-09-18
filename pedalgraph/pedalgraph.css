@@ -126,7 +126,6 @@ body.hide-hud .ace-pedalgraph {
     font-size: 0.7em;
     font-weight: 600;
     letter-spacing: 0.06em;
-    text-transform: uppercase;
     margin-bottom: 0.286em;
 }
 
@@ -181,7 +180,6 @@ body.hide-hud .ace-pedalgraph {
     color: rgba(255, 255, 255, 0.45);
     font-weight: 500;
     letter-spacing: 0.04em;
-    text-transform: none;
     white-space: nowrap;
 }
 
