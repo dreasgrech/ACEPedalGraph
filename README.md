@@ -9,11 +9,10 @@
 [![Downloads](https://img.shields.io/github/downloads/dreasgrech/ACEPedalGraph/total?style=flat-square&color=555)](../../releases)
 [![Issues](https://img.shields.io/github/issues/dreasgrech/ACEPedalGraph?style=flat-square&color=555)](../../issues)
 
-[Install](#install) · [Options](#options) · [Help](#if-something-isnt-right) · [Developers](#for-developers)
-
 </div>
 
-<p align="center"><img src="docs/images/widget.png" width="70%" alt="Throttle, brake, clutch and handbrake as a scrolling graph, with a level bar for each"></p>
+<p align="center"><img width="400" height="171" alt="pedalgraph_cmp_R_96_50fps_400px" src="https://github.com/user-attachments/assets/6ad256aa-ddef-4b49-bda5-5c785bacaeea" /></p>
+
 
 Throttle, brake, clutch and handbrake scroll across the graph as you drive, each with a live
 level bar beside it. Turn on steering and it draws from the centre line; turn on the assist
