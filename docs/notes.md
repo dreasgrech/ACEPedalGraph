@@ -109,6 +109,21 @@ are opaque: translucent bars overlapping would double up, so the trace's translu
 is the strip's `opacity`, which composites its bars as one shape. The trace weight
 option and steering's and the marks' own opacities are on the strip for the same reason.
 
+Widening to the left moved the poke to the other end. The bar for the *next* sample now
+reached 1.5 px into the right edge the moment a sample committed, and that sliver is
+sheared towards the raw live value, which changes every frame: the last pixel column of
+the graph changed direction 50 times in a 500-frame recording where the column beside it
+changed 18 (2026-09-19). Both ends are closed the same way: the strip overhangs the
+graph's clip by the widening on each side: the strips sit in a `.pg-strips` box with
+`left: -1.5px; right: -1.5px`, and are `200%` of it. The first attempt, `width: calc(200% +
+6px)` on the strip itself, worked in Chromium and left the graph EMPTY in game -- Cohtml did
+not apply that `calc` even from the stylesheet, so the stock's `calc(33vw + 2rem)` proves
+less than it seemed; percentages and pixels in one `calc` are out. The next sample's bar then
+enters only as far as the sampler has advanced, the newest committed value sits exactly
+at the right clip, and the wrapped newest bar ends 1.5 px before the left clip. The slopes
+are computed against the strip's slot width, which is 3 px / N wider than the graph's
+(`EDGE_PX` in the script, tested against the stylesheet).
+
 ## The clip edge is antialiased
 
 With the fills solid, a faint hairline the full height of the graph appeared at both

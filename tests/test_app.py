@@ -14,7 +14,7 @@ JS = os.path.join(ROOT, "pedalgraph", "pedalgraph.js")
 
 class Tests(AppTests):
     ROOT = ROOT
-    MIN_CASES = 29
+    MIN_CASES = 30
     HOT_PATH = ("const commitSample", "// ---- lifecycle")
 
 
@@ -43,6 +43,24 @@ class WidgetContractTests(unittest.TestCase):
         self.assertIn("settings.onChange(me.name", self.js, "changes reach the live widget")
         self.assertIn("unsubscribeSettings()", self.js, "and detach lets go of the listener")
         self.assertNotIn("localStorage", self.js)
+
+    def test_the_strip_overhangs_the_graph_by_the_bar_widening(self):
+        # bars are widened 1.5 px to the left; without the strip overhanging the clip by the
+        # same amount, the next sample's bar pokes into the right edge (a wobble that follows
+        # the live value) and the wrapped newest bar into the left edge (a hairline)
+        with open(os.path.join(ROOT, "pedalgraph", "pedalgraph.css"), encoding="utf-8") as f:
+            css = f.read()
+        strips = css[css.index(".ace-pedalgraph .pg-strips {"):]
+        strips = strips[:strips.index("}")]
+        self.assertIn("left: -1.5px;", strips)
+        self.assertIn("right: -1.5px;", strips)
+        import re
+        rules = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        self.assertNotIn("calc(", rules, "Cohtml did not apply calc(200% + 6px) even from the stylesheet: the graph came up empty in game")
+        self.assertIn("margin-left: -1.5px;", css)
+        self.assertIn('el("div", CLASS.strips) + tracks + close("div")', self.js, "the strips sit in the overhanging box")
+        self.assertIn("const EDGE_PX = 1.5;", self.js, "the script computes slopes against the strip's slot width")
+        self.assertIn("(graph.offsetWidth + 2 * EDGE_PX)", self.js)
 
     def test_every_view_option_is_a_class_in_the_stylesheet(self):
         with open(os.path.join(ROOT, "pedalgraph", "pedalgraph.css"), encoding="utf-8") as f:

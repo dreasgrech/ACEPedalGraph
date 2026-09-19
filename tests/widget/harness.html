@@ -327,6 +327,27 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(!has(root, "pg-nogrid"));
     });
 
+    t("the live edge: at a commit the next sample's bar is entirely past the right clip, the newest committed bar ends 1.5 px past it, and the wrapped twin ends 1.5 px before the left clip", function () {
+        // every bar is widened 1.5 px to the left, and the strip overhangs the graph by the
+        // same amount on both sides (pedalgraph.css), so neither widened edge is on screen:
+        // the right one followed the raw live value and wobbled every frame
+        clock.step(236000);
+        const t0 = state.sampler.lastSampleAt + SAMPLE_MS;
+        clock.step(t0);                                     // exactly on the sampler's grid: a commit, frac 0
+        const graph = root.querySelector(".pg-graph").getBoundingClientRect();
+        const slot = (state.head + 1) % N;
+        const incoming = bars[3][slot === 0 ? 2 * N : slot + N];
+        const newest = bars[3][state.head + N];
+        const twin = bars[3][state.head];
+        const slotPx = (graph.width + 2 * PedalGraph.EDGE_PX) / N;
+        ok(incoming.style.transform.indexOf("scaleY(0)") < 0, "the incoming bar is drawn");
+        near(incoming.getBoundingClientRect().left, graph.right, 1 / 16, "the incoming bar starts at the clip: its widened edge is outside");
+        near(newest.getBoundingClientRect().right, graph.right + PedalGraph.EDGE_PX, 1 / 16, "the newest committed bar's box ends past the clip by the widening: its own value sits exactly at the clip");
+        near(twin.getBoundingClientRect().right, graph.left - PedalGraph.EDGE_PX, 1 / 16, "the newest slot's wrapped twin ends before the left clip: no hairline");
+        clock.step(t0 + SAMPLE_MS / 2);                      // half way to the next sample
+        near(incoming.getBoundingClientRect().left, graph.right - slotPx / 2, 1 / 16, "half a slot of the incoming bar is on screen half way through the period");
+    });
+
     t("the assist marks have a legend line of their own, shown only while one is on, and the whole legend can go", function () {
         const marks = root.querySelector(".pg-legend.pg-marks");
         ok(marks, "a second legend line for the marks");
@@ -426,7 +447,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const graph = root.querySelector(".pg-graph");
         eq(state.aspect, 0, "a view change clears the aspect: the layout it depends on is stale until the next frame");
         clock.step(234000);
-        near(state.aspect, graph.offsetHeight * N / graph.offsetWidth, 1e-9, "the next frame measures it: graph height over bar width, in pixels");
+        near(state.aspect, graph.offsetHeight * N / (graph.offsetWidth + 2 * PedalGraph.EDGE_PX), 1e-9, "the next frame measures it: graph height over bar width, in pixels, the slot being the strip's");
         const gr = graph.getBoundingClientRect();
         [gr.left, gr.right, gr.top, gr.bottom].forEach(function (edge, i) { near(edge, Math.round(edge), 1 / 32, "the graph's " + ["left", "right", "top", "bottom"][i] + " edge is on a whole pixel (to the 1/64 px layout unit), so the clip does not antialias a hairline"); });
         ok(graph.style.marginLeft !== "" || graph.style.marginRight !== "" || gr.left % 1 === 0, "snapped through its margins");

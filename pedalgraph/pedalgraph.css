@@ -230,10 +230,28 @@ body.hide-hud .ace-pedalgraph {
     background: rgba(255, 255, 255, 0.07);
 }
 
-/* The translucency is the strip's, not each bar's: the bars overlap by a whole slot
-   (see BAR_OVERLAP in pedalgraph.js) to kill the antialiasing seams between sub-pixel
-   bars, and translucent bars overlapping would read as stripes twice as dense. A
-   translucent strip composites its opaque bars as one shape. */
+/* The translucency is the strip's, not each bar's: the bars overlap by 1.5 px (see
+   .pg-bar) to kill the antialiasing seams between sub-pixel bars, and translucent bars
+   overlapping would read as stripes twice as dense. A translucent strip composites its
+   opaque bars as one shape. */
+/* The strips' containing block overhangs the graph by the bar widening (1.5 px, see
+   .pg-bar) on BOTH sides, so a strip is 3 px wider than two graphs and starts 1.5 px left
+   of the clip. Every bar reaches 1.5 px left of its slot, so without the overhang two bars
+   poke into view that should not: at the right edge the bar for the NEXT sample, whose
+   sheared sliver follows the raw live value and wobbles every frame; at the left edge,
+   because the strip wraps, the newest committed bar, as a hairline. Clipping 1.5 px off
+   each end hides both and puts the newest committed value exactly at the right clip. A
+   wrapper with negative offsets rather than calc(200% + 6px) on the strip: Cohtml did not
+   apply that calc even from the stylesheet, and the graph came up empty in game.
+   pedalgraph.js mirrors the 1.5 as EDGE_PX. */
+.ace-pedalgraph .pg-strips {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -1.5px;
+    right: -1.5px;
+}
+
 .ace-pedalgraph .pg-track {
     position: absolute;
     top: 0;

@@ -160,5 +160,5 @@ Cohtml-specific, so a change still needs one launch and a look at the log.
 ---
 
 <div align="center">
-<sub>Pedal Graph 0.8.2 · needs ACE UI App Loader 0.23.0 or newer</sub>
+<sub>Pedal Graph 0.8.4 · needs ACE UI App Loader 0.23.0 or newer</sub>
 </div>

@@ -89,6 +89,12 @@ const PedalGraph = (function () {
     /** What a bar that must not show is set to: the stylesheet's own initial transform. */
     const HIDDEN_TRANSFORM = "scaleY(0)";
     /**
+     * How far each bar is widened to the left, in px, and so how far the strips' box
+     * overhangs the graph's clip on each side (pedalgraph.css, .pg-bar and .pg-strips). The
+     * slot width the slopes are computed against is the strip's, not the graph's.
+     */
+    const EDGE_PX = 1.5;
+    /**
      * Bars are laid out in whole slots here; the stylesheet widens each one a pixel and a
      * half to the LEFT (`.pg-bar`, a negative margin and matching padding), which is what
      * hides the antialiasing seams between bars a pixel or two wide. See pedalgraph.css
@@ -180,6 +186,8 @@ const PedalGraph = (function () {
         plot: "pg-plot",
         graph: "pg-graph",
         grid: "pg-grid",
+        /** The strips' containing block, overhanging the graph's clip by EDGE_PX on each side. */
+        strips: "pg-strips",
         track: "pg-track",
         /** On an assist mark's strip and legend item: a thin tick along the top, no readout. */
         mark: "pg-mark",
@@ -547,7 +555,7 @@ const PedalGraph = (function () {
             + el("div", CLASS.legend + " " + CLASS.marks) + marks + close("div")
             + close("div")
             + el("div", CLASS.plot)
-            + el("div", CLASS.graph) + grid + tracks + close("div")
+            + el("div", CLASS.graph) + grid + el("div", CLASS.strips) + tracks + close("div") + close("div")
             + el("div", CLASS.levels) + levels + close("div")
             + close("div");
     };
@@ -608,7 +616,8 @@ const PedalGraph = (function () {
     const measureAspect = function (state) {
         const graph = state.graph;
 
-        if (graph && graph.offsetWidth > 0) { state.aspect = graph.offsetHeight * N / graph.offsetWidth; }
+        // the strip is 2 * EDGE_PX wider than the graph, so a slot is that much wider too
+        if (graph && graph.offsetWidth > 0) { state.aspect = graph.offsetHeight * N / (graph.offsetWidth + 2 * EDGE_PX); }
 
         return state.aspect;
     };
@@ -1003,6 +1012,7 @@ const PedalGraph = (function () {
         WINDOW_S: WINDOW_S,
         N: N,
         BAR_COUNT: BAR_COUNT,
+        EDGE_PX: EDGE_PX,
         CLASS: CLASS,
         KIND: KIND,
         TRACES: TRACES,
