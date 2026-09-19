@@ -320,7 +320,14 @@ const PedalGraph = (function () {
     };
 
     /** One switch per input, listed throttle first: the order a driver thinks in. */
-    const inputSpecs = [GAS, BRAKE, HANDBRAKE, CLUTCH, STEER].map(function (t) { return channelSpec(TRACES[t]); });
+    /**
+     * The reading order of the inputs, everywhere a player sees them side by side: the
+     * legend, the level bars and the switches in the options. The pedals as they sit under
+     * the feet, left to right, then the handbrake, then steering. Not the TRACES order,
+     * which is the data-trace index the stylesheet keys colours on and must not move.
+     */
+    const INPUT_ORDER = [CLUTCH, BRAKE, GAS, HANDBRAKE, STEER];
+    const inputSpecs = INPUT_ORDER.map(function (t) { return channelSpec(TRACES[t]); });
     const markSpecs = TRACES.filter(function (trace) { return trace.kind === KIND.mark; }).map(channelSpec);
 
     const section = function (key, label, columns, collapsed) {
@@ -522,8 +529,16 @@ const PedalGraph = (function () {
         let marks = "";
         let tracks = "";
         let levels = "";
+        // legend items and level bars in reading order, the marks after the inputs; the
+        // strips in TRACES order, which nothing visible depends on (they stack by z-index)
+        const shown = INPUT_ORDER.concat(TRACES.map(function (trace, index) { return index; }).filter(function (index) {
+            return TRACES[index].kind === KIND.mark;
+        }));
 
-        TRACES.forEach(function (trace, index) {
+        TRACES.forEach(function (trace, index) { tracks += stripMarkup(index); });
+
+        shown.forEach(function (index) {
+            const trace = TRACES[index];
             const traceAttr = traceAttrs(index);
             const isMark = trace.kind === KIND.mark;
             const item = el("div", isMark ? CLASS.item + " " + CLASS.mark : CLASS.item, traceAttr)
@@ -535,8 +550,6 @@ const PedalGraph = (function () {
             // the marks get a legend line of their own: they are not inputs, and the line
             // only shows while one of them is on (applyView)
             if (isMark) { marks += item; } else { inputs += item; }
-
-            tracks += stripMarkup(index);
 
             if (!isMark) {
                 levels += el("div", CLASS.level, traceAttr) + el("div", CLASS.fill) + close("div") + close("div");

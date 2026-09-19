@@ -77,10 +77,23 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
     const grab = function () {
         tracks = Array.prototype.slice.call(root.querySelectorAll(".pg-track"));
         bars = tracks.map(function (el) { return Array.prototype.slice.call(el.querySelectorAll(".pg-bar")); });
-        levels = Array.prototype.slice.call(root.querySelectorAll(".pg-lvl > div"));
-        vals = Array.prototype.slice.call(root.querySelectorAll(".pg-val"));
+        // by channel index, not DOM order: legend items and level bars are laid out in
+        // reading order, and only the five inputs have a level bar and a readout
+        const inputs = PedalGraph.TRACES.filter(function (trace) { return trace.kind !== PedalGraph.KIND.mark; });
+        levels = inputs.map(function (trace, t) { return root.querySelector(".pg-lvl[data-trace=\"" + t + "\"] > div"); });
+        vals = inputs.map(function (trace, t) { return root.querySelector(".pg-item[data-trace=\"" + t + "\"] .pg-val"); });
     };
     grab();
+    const readingOrder = function (selector) {
+        return Array.prototype.slice.call(root.querySelectorAll(selector)).map(function (el) { return el.getAttribute("data-trace"); }).join(",");
+    };
+
+    t("the legend, the level bars and the input switches share one reading order: clutch, brake, throttle, handbrake, steering; the marks after", function () {
+        eq(readingOrder(".pg-row .pg-item"), "0,2,3,1,4", "legend in reading order");
+        eq(readingOrder(".pg-lvl"), "0,2,3,1,4", "and the level bars match it");
+        eq(readingOrder(".pg-legend.pg-marks .pg-item"), "5,6,7", "the marks after them, ABS, TC, ESC");
+        eq(readingOrder(".pg-track"), "0,1,2,3,4,5,6,7", "the strips stay in channel order: they stack by z-index, nothing visible depends on it");
+    });
 
     t("attach builds 8 strips x (2N + 1 spare) bars (4 pedals, steering, 3 marks), 5 levels, 5 readouts; panel and loop wired", function () {
         eq(PedalGraph.BAR_COUNT, 2 * N + 1, "two halves and one spare for the wrap");
@@ -240,7 +253,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         const sections = specs.filter(function (spec) { return spec.type === "section"; }).map(function (spec) { return spec.key + (spec.columns === 2 ? "*" : "") + (spec.collapsed ? "!" : ""); });
         eq(sections.join(","), "layout,inputs*,marks*,look*!,stack!,demo!", "six sections: two-column where the rows are switches; Look, Draw order and Demo start folded");
         eq(keys.slice(0, 5).join(","), "layout,scale," + [S.window, S.height].join(",") + ",inputs", "Layout: the loader's scale spec, history and plot height");
-        eq(keys.slice(5, 11).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering,marks", "one switch per input, throttle first");
+        eq(keys.slice(5, 11).join(","), "showClutch,showBrake,showThrottle,showHandbrake,showSteering,marks", "one switch per input, in the legend's reading order");
         eq(keys.slice(11, 15).join(","), "markAbs,markTc,markEsc,look", "then the assist marks");
         eq(keys.slice(15).join(","), [S.weight, S.bg, S.legend, S.levels, S.readouts, S.grid, "stack", S.order, "demo", S.attract].join(","), "then the look, the draw order and the demo");
         eq(Object.keys(settings.all("pedalgraph")).indexOf("layout"), -1, "sections carry no value");
@@ -271,8 +284,8 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
 
     t("switching an input off hides its legend item, strip and level bar and stops drawing it; history keeps recording", function () {
         window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.6, brake_percent: 0.2, clutch_percent: 0, handbrake_percent: 0 };
-        const items = Array.prototype.slice.call(root.querySelectorAll(".pg-item"));
-        const boxes = Array.prototype.slice.call(root.querySelectorAll(".pg-lvl"));
+        const items = PedalGraph.TRACES.map(function (trace, t) { return root.querySelector(".pg-item[data-trace=\"" + t + "\"]"); });
+        const boxes = PedalGraph.TRACES.map(function (trace, t) { return root.querySelector(".pg-lvl[data-trace=\"" + t + "\"]"); });
         const t0 = 200000;
         clock.step(t0);
         settings.set("pedalgraph", "showThrottle", false);
