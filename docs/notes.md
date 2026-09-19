@@ -157,6 +157,40 @@ When an input, the level bars or the readouts come back, the per-frame caches
 a value that happened to match the cached one would leave the stale element on
 screen until it changed.
 
+## Two renderers that lost (2026-09-19)
+
+The trapezoids' remaining flaw: the 1.5 px seam-hiding widening is part of the sheared
+element, so every bar carries its slope 1.5 px past its slot, and a tooth grows wherever
+the slope changes -- one per sample in a curve, most visible on a spike; the silhouette is
+the union of the bars, so no paint order hides it. Two rewrites tried to remove it and
+both were reverted the same day; 0.8.5 stands. What they taught:
+
+- **`clip-path: polygon()` bars.** Each pedal bar two slots wide, the graph's height,
+  clipped to the polyline through the previous sample, its own and the next; every slot
+  drawn by two bars with the same top edge, so no seam and no widening, exact geometry.
+  A probe showed the game draws `polygon()` (percent and pixel) and `path()` clips, and
+  the Chromium preview was perfect. In game every slope was a staircase: **Cohtml's clip
+  is a hard stencil with no antialiasing**, where a `skewY` edge is smooth. Chromium
+  antialiases clips, so no browser check could have shown it. Also learned: the stock
+  speedo animates `clipPath = path(...)` per frame, and `getComputedStyle` reports `none`
+  for a clip the engine draws. Recorded in `ACEGameInternals/docs/gameface-notes.md`; the
+  appkit hot-path rule keeps `clipPath` out on purpose.
+- **Whole-pixel slots.** No widening at all: the strips' box sized to N slots of a whole
+  number of device pixels (the smallest covering the graph), anchored at the graph's right
+  edge, the scroll a `translateX` of whole pixels, the sampler at slots-on-screen per
+  window second. No fractional vertical edge, so no seam, no teeth, and the headless
+  renders at device scale 1 and 2 were clean (at a fractional scale of 2.6 the seams came
+  straight back, hence device pixels via `devicePixelRatio`, not CSS pixels). In game it
+  **stuttered**: a strip that moves a whole pixel at a time, about a hundred steps a
+  second against the game's own frame rate, moves 1 px on some frames and 2 px on others,
+  and that unevenness reads as judder next to the fractional scroll. And the slopes still
+  looked aliased: with the teeth gone, what remains is how Renoir antialiases a sheared
+  edge, which no geometry of ours changes.
+
+Smooth scroll needs fractional positions; fractional positions need the widening;
+the widening makes the teeth. Untried: a 1 px semi-transparent top border on each bar,
+sheared with it, as a soft edge -- a coin flip, and no help for the stutter.
+
 ## The look
 
 Follows the stock HUD widgets so it reads as part of the game: a dark translucent
