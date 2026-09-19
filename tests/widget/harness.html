@@ -242,7 +242,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(keys.slice(0, 5).join(","), "layout,scale," + [S.window, S.height].join(",") + ",inputs", "Layout: the loader's scale spec, history and plot height");
         eq(keys.slice(5, 11).join(","), "showThrottle,showBrake,showHandbrake,showClutch,showSteering,marks", "one switch per input, throttle first");
         eq(keys.slice(11, 15).join(","), "markAbs,markTc,markEsc,look", "then the assist marks");
-        eq(keys.slice(15).join(","), [S.weight, S.bg, S.levels, S.readouts, S.grid, "stack", S.order, "demo", S.attract].join(","), "then the look, the draw order and the demo");
+        eq(keys.slice(15).join(","), [S.weight, S.bg, S.legend, S.levels, S.readouts, S.grid, "stack", S.order, "demo", S.attract].join(","), "then the look, the draw order and the demo");
         eq(Object.keys(settings.all("pedalgraph")).indexOf("layout"), -1, "sections carry no value");
         const sw = function (spec) { return spec.swatch ? spec.swatch.className + "/" + spec.swatch.attrs["data-trace"] : "-"; };
         eq(specs.filter(function (s) { return s.key === "showBrake"; }).map(sw)[0], "pg-option-swatch/2", "a channel switch carries its colour chip, keyed like the legend swatch");
@@ -327,6 +327,25 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         ok(!has(root, "pg-nogrid"));
     });
 
+    t("the assist marks have a legend line of their own, shown only while one is on, and the whole legend can go", function () {
+        const marks = root.querySelector(".pg-legend.pg-marks");
+        ok(marks, "a second legend line for the marks");
+        eq(marks.querySelectorAll(".pg-item").length, 3, "the three marks live in it");
+        eq(root.querySelector(".pg-row .pg-legend").querySelectorAll(".pg-item").length, 5, "the inputs stay on the first line, beside the status");
+        ok(marks.classList.contains("pg-off"), "hidden while every mark is off, which is the default");
+        eq(getComputedStyle(marks).display, "none");
+        settings.set("pedalgraph", "markAbs", true);
+        ok(!marks.classList.contains("pg-off"), "one mark on: the line appears");
+        settings.set("pedalgraph", "markAbs", false);
+        ok(marks.classList.contains("pg-off"), "and goes again when it is off");
+        eq(settings.get("pedalgraph", S.legend), true, "the legend is on by default");
+        settings.set("pedalgraph", S.legend, false);
+        ok(root.classList.contains("pg-nolegend"), "legend off is a class on the root");
+        eq(getComputedStyle(root.querySelector(".pg-header")).display, "none", "and the whole header is gone: only the graph");
+        settings.set("pedalgraph", S.legend, true);
+        ok(!root.classList.contains("pg-nolegend"));
+    });
+
     t("background is one of three looks, two of them a class", function () {
         settings.set("pedalgraph", S.bg, "light");
         ok(has(root, "pg-bg-light") && !has(root, "pg-bg-none"), "light");
@@ -395,8 +414,10 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         centredIs(levels[4], 12.5, 0.25, "so does the level bar");
         eq(vals[4].textContent, "L 50%", "readout");
         const bar = bars[4][0];
-        eq(getComputedStyle(bar).transformOrigin.split(" ")[1], (bar.offsetHeight / 2) + "px", "origin at the centre (stylesheet)");
-        eq(getComputedStyle(levels[4]).transformOrigin.split(" ")[1], (levels[4].offsetHeight / 2) + "px", "level bar origin at the centre");
+        // to a layout unit: the graph is snapped to whole pixels by its margins, so its
+        // height can carry a 1/64 px the integer offsetHeight does not (see the loader's snap test)
+        near(parseFloat(getComputedStyle(bar).transformOrigin.split(" ")[1]), bar.offsetHeight / 2, 1 / 32, "origin at the centre (stylesheet)");
+        near(parseFloat(getComputedStyle(levels[4]).transformOrigin.split(" ")[1]), levels[4].offsetHeight / 2, 1 / 32, "level bar origin at the centre");
         settings.set("pedalgraph", "showSteering", false);
         window.ModelCurrentCar.steering_percent = 0;
     });

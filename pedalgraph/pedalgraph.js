@@ -168,7 +168,11 @@ const PedalGraph = (function () {
         root: "ace-pedalgraph",
         dragging: "dragging",
         header: "pg-header",
+        /** The header's first line: the inputs' legend and the status text. */
+        row: "pg-row",
         legend: "pg-legend",
+        /** On the second legend line, the assist marks': a different kind of thing from the inputs. */
+        marks: "pg-marks",
         item: "pg-item",
         swatch: "pg-swatch",
         value: "pg-val",
@@ -186,6 +190,7 @@ const PedalGraph = (function () {
         /** On a legend item, strip or level bar whose channel is switched off. */
         off: "pg-off",
         /** On the root: what the view options hide, and the looks they choose. */
+        noLegend: "pg-nolegend",
         noLevels: "pg-nolevels",
         noReadouts: "pg-noreadouts",
         noGrid: "pg-nogrid",
@@ -278,6 +283,7 @@ const PedalGraph = (function () {
         window: "window",
         height: "height",
         weight: "weight",
+        legend: "legend",
         levels: "levels",
         readouts: "readouts",
         grid: "grid",
@@ -349,6 +355,7 @@ const PedalGraph = (function () {
             value: BACKGROUND_DARK,
             options: [BACKGROUND_DARK, BACKGROUND_LIGHT, BACKGROUND_NONE]
         },
+        { key: SETTING.legend, type: "toggle", label: "Legend", value: true, hint: "off leaves only the graph" },
         { key: SETTING.levels, type: "toggle", label: "Level bars", value: true },
         { key: SETTING.readouts, type: "toggle", label: "Readouts", value: true },
         { key: SETTING.grid, type: "toggle", label: "Grid lines", value: true },
@@ -373,7 +380,7 @@ const PedalGraph = (function () {
 
     /** The option keys that change what is drawn, and nothing else. */
     const VIEW_KEYS = TRACES.map(function (trace) { return trace.setting; })
-        .concat([SETTING.height, SETTING.weight, SETTING.levels, SETTING.readouts, SETTING.grid, SETTING.bg]);
+        .concat([SETTING.height, SETTING.weight, SETTING.legend, SETTING.levels, SETTING.readouts, SETTING.grid, SETTING.bg]);
 
     // ---- small helpers -----------------------------------------------------------
 
@@ -503,19 +510,24 @@ const PedalGraph = (function () {
 
     /** The widget's markup: legend, one strip per channel, a level bar per input. */
     const markup = function () {
-        let legend = "";
+        let inputs = "";
+        let marks = "";
         let tracks = "";
         let levels = "";
 
         TRACES.forEach(function (trace, index) {
             const traceAttr = traceAttrs(index);
             const isMark = trace.kind === KIND.mark;
-
-            legend += el("div", isMark ? CLASS.item + " " + CLASS.mark : CLASS.item, traceAttr)
+            const item = el("div", isMark ? CLASS.item + " " + CLASS.mark : CLASS.item, traceAttr)
                 + el("div", CLASS.swatch) + close("div")
                 + trace.label
                 + (isMark ? "" : el("div", CLASS.value) + ZERO_TEXT + close("div"))
                 + close("div");
+
+            // the marks get a legend line of their own: they are not inputs, and the line
+            // only shows while one of them is on (applyView)
+            if (isMark) { marks += item; } else { inputs += item; }
+
             tracks += stripMarkup(index);
 
             if (!isMark) {
@@ -528,8 +540,11 @@ const PedalGraph = (function () {
         }).join("");
 
         return el("div", CLASS.header)
-            + el("div", CLASS.legend) + legend + close("div")
+            + el("div", CLASS.row)
+            + el("div", CLASS.legend) + inputs + close("div")
             + el("div", CLASS.noData) + NO_DATA_TEXT + close("div")
+            + close("div")
+            + el("div", CLASS.legend + " " + CLASS.marks) + marks + close("div")
             + close("div")
             + el("div", CLASS.plot)
             + el("div", CLASS.graph) + grid + tracks + close("div")
@@ -564,6 +579,7 @@ const PedalGraph = (function () {
             levels: TRACES.map(function (trace, t) { return forTrace(root, CLASS.level, t, " > ." + CLASS.fill); }),
             vals: TRACES.map(function (trace, t) { return forTrace(root, CLASS.item, t, " ." + CLASS.value); }),
             noData: root.querySelector("." + CLASS.noData),
+            marksLegend: root.querySelector("." + CLASS.marks),
             graph: root.querySelector("." + CLASS.graph),
             aspect: 0,                  // graph height over bar width, in pixels; 0 until the graph has a size
             unsubscribeSettings: null,
@@ -633,6 +649,9 @@ const PedalGraph = (function () {
             state.lastPct[t] = "";
         });
 
+        // the marks' legend line exists only while a mark is on; the whole legend only while wanted
+        setClass(state.marksLegend, CLASS.off, !TRACES.some(function (trace, t) { return trace.kind === KIND.mark && state.shown[t]; }));
+        setClass(state.root, CLASS.noLegend, options[SETTING.legend] === false);
         state.levelsOn = options[SETTING.levels] !== false;
         state.readoutsOn = options[SETTING.readouts] !== false;
         setClass(state.root, CLASS.noLevels, !state.levelsOn);

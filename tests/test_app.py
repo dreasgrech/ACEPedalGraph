@@ -14,7 +14,7 @@ JS = os.path.join(ROOT, "pedalgraph", "pedalgraph.js")
 
 class Tests(AppTests):
     ROOT = ROOT
-    MIN_CASES = 28
+    MIN_CASES = 29
     HOT_PATH = ("const commitSample", "// ---- lifecycle")
 
 
@@ -47,8 +47,8 @@ class WidgetContractTests(unittest.TestCase):
     def test_every_view_option_is_a_class_in_the_stylesheet(self):
         with open(os.path.join(ROOT, "pedalgraph", "pedalgraph.css"), encoding="utf-8") as f:
             css = f.read()
-        for cls in ("pg-off", "pg-nolevels", "pg-noreadouts", "pg-nogrid", "pg-low", "pg-tall", "pg-faint", "pg-bold",
-                    "pg-bg-light", "pg-bg-none", "pg-mark"):
+        for cls in ("pg-off", "pg-nolegend", "pg-nolevels", "pg-noreadouts", "pg-nogrid", "pg-low", "pg-tall", "pg-faint", "pg-bold",
+                    "pg-bg-light", "pg-bg-none", "pg-mark", "pg-marks", "pg-row"):
             self.assertIn("." + cls, css, cls)
         # every length inside the panel is em, so one font-size on the root scales it all
         inside = css[css.index(".ace-pedalgraph .pg-header"):]

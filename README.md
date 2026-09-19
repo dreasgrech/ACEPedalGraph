@@ -67,8 +67,8 @@ through the HUD reload and a restart. Click a section header to fold it.
 |---|---|
 | **Layout** | Panel scale, how many seconds of driving the graph shows (3, 5 or 10), and a low, normal or tall plot. |
 | **Inputs** | Which of throttle, brake, clutch, handbrake and steering are drawn. A hidden one keeps recording, so it has its history when you turn it back on. |
-| **Assist marks** | ABS, TC and ESC: a tick along the top wherever the electronics stepped in. Off by default. |
-| **Look** | Faint, normal or bold traces; a dark, light or no background; level bars, readouts and grid lines on or off. |
+| **Assist marks** | ABS, TC and ESC: a tick along the top wherever the electronics stepped in, with a legend line of their own. Off by default. |
+| **Look** | Faint, normal or bold traces; a dark, light or no background; the legend, level bars, readouts and grid lines on or off. Legend off leaves only the graph. |
 | **Draw order** | Drag to choose which input paints over which. |
 | **Demo** | Attract mode: scripted inputs, for recording without driving. |
 
@@ -160,5 +160,5 @@ Cohtml-specific, so a change still needs one launch and a look at the log.
 ---
 
 <div align="center">
-<sub>Pedal Graph 0.8.1 · needs ACE UI App Loader 0.23.0 or newer</sub>
+<sub>Pedal Graph 0.8.2 · needs ACE UI App Loader 0.23.0 or newer</sub>
 </div>
