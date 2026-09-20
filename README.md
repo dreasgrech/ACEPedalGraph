@@ -23,8 +23,8 @@ stays there.
 
 ## Install
 
-This is an app for the [ACE UI App Loader](https://github.com/dreasgrech/ACEUIAppLoader).
-Install that first.
+> [!WARNING]
+> This is an app for the [ACE UI App Loader](https://github.com/dreasgrech/ACEUIAppLoader) mod so that needs to be installed (a single file) as well.
 
 <table>
 <tr><td width="40" align="center"><h3>1</h3></td><td>
