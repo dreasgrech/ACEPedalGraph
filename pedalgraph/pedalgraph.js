@@ -319,7 +319,6 @@ const PedalGraph = (function () {
         return { key: trace.setting, type: "toggle", label: trace.name, value: trace.on, swatch: optionSwatch(trace) };
     };
 
-    /** One switch per input, listed throttle first: the order a driver thinks in. */
     /**
      * The reading order of the inputs, everywhere a player sees them side by side: the
      * legend, the level bars and the switches in the options. The pedals as they sit under

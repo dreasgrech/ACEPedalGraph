@@ -57,22 +57,45 @@ drawer with its own switch and an **OPTIONS** button.
 
 ## Options
 
-<p align="left"><img width="374" height="741" alt="image" src="https://github.com/user-attachments/assets/7761c2d8-4e9e-4ae9-aa3a-b8d716583d90" /></p>
-
+<table>
+<tr>
+<td width="300" valign="top"><img width="300" alt="The Pedal Graph options window" src="https://github.com/user-attachments/assets/7761c2d8-4e9e-4ae9-aa3a-b8d716583d90" /></td>
+<td valign="top">
 
 **OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept,
-through the HUD reload and a restart. Click a section header to fold it.
+through the HUD reload and a restart. Click a section header to fold it. Defaults in bold.
 
-| | |
-|---|---|
-| **Layout** | Panel scale, how many seconds of driving the graph shows (3, 5 or 10), and a low, normal or tall plot. |
-| **Inputs** | Which of clutch, brake, throttle, handbrake and steering are drawn. A hidden one keeps recording, so it has its history when you turn it back on. |
-| **Assist marks** | ABS, TC and ESC: a tick along the top wherever the electronics stepped in, with a legend line of their own. Off by default. |
-| **Look** | Faint, normal or bold traces; a dark, light or no background; the legend, level bars, readouts and grid lines on or off. Legend off leaves only the graph. |
-| **Draw order** | Drag to choose which input paints over which. |
-| **Demo** | Attract mode: scripted inputs, for recording without driving. |
+**Layout**
+- *Panel scale*: 0.6 to 2.0 in steps of 0.1, default **1.0**.
+- *History*: how many seconds of driving the graph shows: 3 s, **5 s** or 10 s.
+- *Plot height*: low, **normal** or tall.
+
+**Inputs**
+- **Clutch**, **brake**, **throttle** and **handbrake** on, steering off. A hidden input
+  keeps recording, so it has its history when you turn it back on.
+
+**Assist marks**
+- ABS, TC and ESC, all **off**: a tick along the top wherever the electronics stepped in,
+  with a legend line of their own.
+
+**Look**
+- *Traces*: faint, **normal** or bold.
+- *Background*: **dark**, light or none.
+- *Legend*, *level bars*, *readouts* and *grid lines*: each **on**. Legend off leaves only
+  the graph.
+
+**Draw order**
+- Drag to choose which input paints over which; the top of the list is in front. Default,
+  top first: brake, clutch, steering, handbrake, throttle.
+
+**Demo**
+- *Attract mode*, **off**: scripted inputs, for recording without driving.
 
 **Reset to defaults** puts every value back.
+
+</td>
+</tr>
+</table>
 
 ---
 
