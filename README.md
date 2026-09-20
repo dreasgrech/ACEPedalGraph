@@ -14,14 +14,14 @@
 <p align="center"><img width="400" height="171" alt="pedalgraph_cmp_R_96_50fps_400px" src="https://github.com/user-attachments/assets/6ad256aa-ddef-4b49-bda5-5c785bacaeea" /></p>
 
 
-Throttle, brake, clutch and handbrake scroll across the graph as you drive, each with a live
-level bar beside it. Turn on steering and it draws from the centre line; turn on the assist
-marks and a tick appears wherever ABS, TC or ESC stepped in. Drag it anywhere on the HUD and it
-stays there.
+Throttle, brake, clutch and handbrake scroll across the graph as you drive, each with a live level bar beside it. Turn on steering and it draws from the centre line; turn on the assist marks and a tick appears wherever ABS, TC or ESC stepped in. Drag it anywhere on the HUD and it stays there.
+<p align="center">
+<img width="2560" height="1440" alt="20E11E~1" src="https://github.com/user-attachments/assets/a36fa2b8-d63a-4fb0-a7e1-3d80d447fe4d" />
+</p>
 
 ---
 
-## Install
+## Installing the ACEPedalGraph app
 
 > [!WARNING]
 > This is an app for the [ACE UI App Loader](https://github.com/dreasgrech/ACEUIAppLoader) mod so that needs to be installed (a single file) as well.
@@ -52,6 +52,9 @@ Nothing to run.
 
 In the car, move your mouse to the right edge of the screen. The graph is listed in the app
 drawer with its own switch and an **OPTIONS** button.
+
+<img width="343" height="324" alt="image" src="https://github.com/user-attachments/assets/ec48acf5-a4a0-4905-bdec-6c7643243485" />
+
 
 ---
 
