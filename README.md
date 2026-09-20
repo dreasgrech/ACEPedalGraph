@@ -57,7 +57,8 @@ drawer with its own switch and an **OPTIONS** button.
 
 ## Options
 
-<p align="center"><img src="docs/images/widget-all.png" width="70%" alt="Every channel on: steering drawn from the centre line, ABS, TC and ESC ticks along the top"></p>
+<p align="left"><img width="374" height="741" alt="image" src="https://github.com/user-attachments/assets/7761c2d8-4e9e-4ae9-aa3a-b8d716583d90" /></p>
+
 
 **OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept,
 through the HUD reload and a restart. Click a section header to fold it.
@@ -110,51 +111,6 @@ Open an [issue](../../issues) and say what you saw. If you can, attach the newes
 Delete the folder `mods\uiresources\ACEUIAppLoader\pedalgraph` and the file
 `Video\ACEUIAppLoader-pedalgraph.settingspreset`, both under `Saved Games\ACE`. Your settings
 stay in the game's UI settings file, where the game ignores them.
-
----
-
-## For developers
-
-This is the loader's **reference app**: the smallest complete example of the shape every app
-follows, and the one to copy from. It is one folder with three files and no build step.
-
-```
-pedalgraph/
-  app.json          version, title, stylesheet and script
-  pedalgraph.js     the widget: PedalGraph.attach(root) / .detach(state)
-  pedalgraph.css    all styling in em, one class per option
-```
-
-The widget reads the game's `ModelCurrentCar` and animates a fixed set of bars with CSS
-transforms, nothing else per frame. Each pedal's bar is a trapezoid from the previous sample
-to its own, so a trace is piecewise linear rather than a staircase. Everything that is not
-the graph comes from the loader's library: the panel, the frame loop, the settings window,
-the panel scale, and the app's own identity.
-
-<details>
-<summary><b>Working on it</b></summary><br>
-
-Clone [`ACEUIAppLoader`](https://github.com/dreasgrech/ACEUIAppLoader) and
-[`ACEGameInternals`](https://github.com/dreasgrech/ACEGameInternals) beside this repo.
-
-```
-python ..\ACEUIAppLoader\tools\install_app.py pedalgraph     # install this checkout; Escape and resume reloads it
-python -m unittest discover -s tests -v                       # the shared kit plus the widget's own cases
-python tools\preview_fonts.py                                 # once: the game's typeface for the preview
-python ..\ACEUIAppLoader\tools\release_app.py pedalgraph      # the release zip, into dist/
-```
-
-`dev/preview.html` runs the widget outside the game in Edge or Chrome: `W` `S` `A` `Space`
-and the arrow keys drive a fake car, or leave the demo on. It cannot show anything
-Cohtml-specific, so a change still needs one launch and a look at the log.
-
-| | |
-|---|---|
-| [`docs/notes.md`](docs/notes.md) | rendering rules, what the game's engine does differently, how to verify a change in game |
-| [`docs/writing-an-app.md`](https://github.com/dreasgrech/ACEUIAppLoader/blob/main/docs/writing-an-app.md) | the app lifecycle and `app.json`, in the loader repo |
-| [`docs/style.md`](https://github.com/dreasgrech/ACEUIAppLoader/blob/main/docs/style.md) | the JavaScript rules the test kit enforces |
-
-</details>
 
 ---
 
