@@ -50,10 +50,17 @@ Nothing to run.
 </td></tr>
 </table>
 
+<table>
+<tr>
+<td width="343" valign="top"><img width="343" alt="The app drawer with Pedal Graph listed" src="https://github.com/user-attachments/assets/ec48acf5-a4a0-4905-bdec-6c7643243485" /></td>
+<td valign="top">
+
 In the car, move your mouse to the right edge of the screen. The graph is listed in the app
 drawer with its own switch and an **OPTIONS** button.
 
-<img width="343" height="324" alt="image" src="https://github.com/user-attachments/assets/ec48acf5-a4a0-4905-bdec-6c7643243485" />
+</td>
+</tr>
+</table>
 
 
 ---
