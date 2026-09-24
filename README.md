@@ -4,8 +4,7 @@
 
 **Your pedals, as a scrolling graph on the HUD of Assetto Corsa EVO.**<br>
 
-[![Latest release](https://img.shields.io/github/v/release/dreasgrech/ACEPedalGraph?style=flat-square&label=download&color=0a7)](../../releases/latest)
-[![Needs](https://img.shields.io/badge/needs-ACE_UI_App_Loader-informational?style=flat-square)](https://github.com/dreasgrech/ACEUIAppLoader)
+[![Latest release](https://img.shields.io/github/v/release/dreasgrech/ACEPedalGraph?style=flat-square&label=download&color=0a7)](../../releases/latest) [![Needs](https://img.shields.io/badge/needs-ACE_UI_App_Loader-informational?style=flat-square)](https://github.com/dreasgrech/ACEUIAppLoader)
 
 </div>
 
@@ -27,8 +26,7 @@ Throttle, brake, clutch and handbrake scroll across the graph as you drive, each
 <table>
 <tr><td width="40" align="center"><h3>1</h3></td><td>
 
-Download the **`ACEPedalGraph-….zip`** from the [latest release](../../releases/latest) and open it.
-Inside are two folders, `mods` and `Video`.
+Download the **`ACEPedalGraph-….zip`** from the [latest release](../../releases/latest) and open it. Inside are two folders, `mods` and `Video`.
 
 </td></tr>
 <tr><td align="center"><h3>2</h3></td><td>
@@ -42,8 +40,7 @@ Press <kbd>Win</kbd> + <kbd>R</kbd>, paste this in, press <kbd>Enter</kbd>:
 </td></tr>
 <tr><td align="center"><h3>3</h3></td><td>
 
-Drag **both** folders out of the zip into that window. If Windows asks, choose to **merge**.
-Nothing to run.
+Drag **both** folders out of the zip into that window. If Windows asks, choose to **merge**. Nothing to run.
 
 </td></tr>
 </table>
@@ -53,8 +50,7 @@ Nothing to run.
 <td width="343" valign="top"><img width="343" alt="The app drawer with Pedal Graph listed" src="https://github.com/user-attachments/assets/ec48acf5-a4a0-4905-bdec-6c7643243485" /></td>
 <td valign="top">
 
-In the car, move your mouse to the right edge of the screen. The graph is listed in the app
-drawer with its own switch and an **OPTIONS** button.
+In the car, move your mouse to the right edge of the screen. The graph is listed in the app drawer with its own switch and an **OPTIONS** button.
 
 </td>
 </tr>
@@ -70,8 +66,7 @@ drawer with its own switch and an **OPTIONS** button.
 <td width="300" valign="top"><img width="300" alt="The Pedal Graph options window" src="https://github.com/user-attachments/assets/7761c2d8-4e9e-4ae9-aa3a-b8d716583d90" /></td>
 <td valign="top">
 
-**OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept,
-through the HUD reload and a restart. Click a section header to fold it. Defaults in bold.
+**OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept, through the HUD reload and a restart. Click a section header to fold it. Defaults in bold.
 
 **Layout**
 - *Panel scale*: 0.6 to 2.0 in steps of 0.1, default **1.0**.
@@ -79,22 +74,18 @@ through the HUD reload and a restart. Click a section header to fold it. Default
 - *Plot height*: low, **normal** or tall.
 
 **Inputs**
-- **Clutch**, **brake**, **throttle** and **handbrake** on, steering off. A hidden input
-  keeps recording, so it has its history when you turn it back on.
+- **Clutch**, **brake**, **throttle** and **handbrake** on, steering off. A hidden input keeps recording, so it has its history when you turn it back on.
 
 **Assist marks**
-- ABS, TC and ESC, all **off**: a tick along the top wherever the electronics stepped in,
-  with a legend line of their own.
+- ABS, TC and ESC, all **off**: a tick along the top wherever the electronics stepped in, with a legend line of their own.
 
 **Look**
 - *Traces*: faint, **normal** or bold.
 - *Background*: **dark**, light or none.
-- *Legend*, *level bars*, *readouts* and *grid lines*: each **on**. Legend off leaves only
-  the graph.
+- *Legend*, *level bars*, *readouts* and *grid lines*: each **on**. Legend off leaves only the graph.
 
 **Draw order**
-- Drag to choose which input paints over which; the top of the list is in front. Default,
-  top first: brake, clutch, steering, handbrake, throttle.
+- Drag to choose which input paints over which; the top of the list is in front. Default, top first: brake, clutch, steering, handbrake, throttle.
 
 **Demo**
 - *Attract mode*, **off**: scripted inputs, for recording without driving.
@@ -112,26 +103,22 @@ through the HUD reload and a restart. Click a section header to fold it. Default
 <details>
 <summary><b>It isn't in the app drawer</b></summary><br>
 
-1. **The loader isn't installed**, or its drawer doesn't appear at all. Start with the
-   [loader's own help](https://github.com/dreasgrech/ACEUIAppLoader#if-something-isnt-right).
-2. **Only one of the two folders was copied.** The app needs both: the folder under `mods`
-   and the small file under `Video`. That file must stay completely empty.
+1. **The loader isn't installed**, or its drawer doesn't appear at all. Start with the [loader's own help](https://github.com/dreasgrech/ACEUIAppLoader#if-something-isnt-right).
+2. **Only one of the two folders was copied.** The app needs both: the folder under `mods` and the small file under `Video`. That file must stay completely empty.
 
 </details>
 
 <details>
 <summary><b>It's there but the graph is flat</b></summary><br>
 
-It draws your own car's inputs, so it only moves once you are driving. Spectating shows the
-car you are watching.
+It draws your own car's inputs, so it only moves once you are driving. Spectating shows the car you are watching.
 
 </details>
 
 <details>
 <summary><b>Anything else</b></summary><br>
 
-Open an [issue](../../issues) and say what you saw. If you can, attach the newest file from
-`%USERPROFILE%\Saved Games\ACE\Logs`.
+Open an [issue](../../issues) and say what you saw. If you can, attach the newest file from `%USERPROFILE%\Saved Games\ACE\Logs`.
 
 </details>
 
@@ -139,9 +126,7 @@ Open an [issue](../../issues) and say what you saw. If you can, attach the newes
 
 ## Uninstalling
 
-Delete the folder `mods\uiresources\ACEUIAppLoader\pedalgraph` and the file
-`Video\ACEUIAppLoader-pedalgraph.settingspreset`, both under `Saved Games\ACE`. Your settings
-stay in the game's UI settings file, where the game ignores them.
+Delete the folder `mods\uiresources\ACEUIAppLoader\pedalgraph` and the file `Video\ACEUIAppLoader-pedalgraph.settingspreset`, both under `Saved Games\ACE`. Your settings stay in the game's UI settings file, where the game ignores them.
 
 ---
 
