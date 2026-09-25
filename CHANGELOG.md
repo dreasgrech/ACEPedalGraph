@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.6 — 2026-09-25
 
-- Nothing since 0.8.5.
+- Attract mode lasts one game session: it stays on through Escape/resume and is off again after a restart.
 
 ## 0.8.5 — 2026-09-21
 

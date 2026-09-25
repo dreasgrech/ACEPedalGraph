@@ -403,7 +403,7 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         near(state.sampler.periodMs, 20, 1e-9);
     });
 
-    t("attract mode: the settings window drives it, it is persisted and restored, and the console toggle writes back", function () {
+    t("attract mode: the settings window drives it, it is restored through Escape/resume, and the console toggle writes back", function () {
         window.ModelCurrentCar.has_focused_car = false;              // no real car
         eq(root.querySelector(".pg-attract"), null, "no checkbox on the widget any more: the options window is the way in");
         eq(state.attract, false, "off by default");
@@ -420,13 +420,29 @@ window.ModelCurrentCar = { has_focused_car: true, gas_percent: 0.5, brake_percen
         eq(state.attract, true, "moving it in the settings window turns the demo on");
         clock.step(220000); clock.step(220100);                      // it now renders demo data with no car
         eq(root.querySelector(".pg-nodata").textContent, "", "no-data message cleared while demoing");
-        PedalGraph.detach(state); state = PedalGraph.attach(root);   // re-attach restores it from storage
+        PedalGraph.detach(state); state = PedalGraph.attach(root);   // Escape/resume: the same game session
         eq(state.attract, true, "restored on");
         PedalGraph.attract(false); eq(settings.get("pedalgraph", S.attract), false, "the console toggle writes back");
         PedalGraph.attract(true); eq(state.attract, true);
         settings.set("pedalgraph", S.attract, false);
         eq(state.attract, false);
         window.ModelCurrentCar.has_focused_car = true;
+    });
+
+    t("attract mode lasts a game session: a restart switches it off, so a demo left on never shows on a real HUD; the key it lived under before is cleared", function () {
+        settings.set("pedalgraph", S.attract, true);
+        eq(state.attract, true, "on");
+        PedalGraph.detach(state); state = PedalGraph.attach(root);
+        eq(state.attract, true, "Escape/resume: still on, so a recording can go on across a pause");
+        ACEUIAppLoader.persist.removeLocal("acepedalgraph.attractsession");   // the game closed: its local store went with it, the option did not
+        const said = window.__log.length;
+        PedalGraph.detach(state); state = PedalGraph.attach(root);
+        eq(state.attract, false, "the next game session: off"); eq(settings.get("pedalgraph", S.attract), false, "and the option with it");
+        ok(window.__log.slice(said).some(function (l) { return l.indexOf("left on from an earlier game session") >= 0; }), "and the log says why");
+        ACEUIAppLoader.persist.writeLocal("acepedalgraph.attract", true);   // the key attract lived under before it was a setting
+        PedalGraph.detach(state); state = PedalGraph.attach(root);
+        eq(ACEUIAppLoader.persist.readLocal("acepedalgraph.attract"), null, "cleared at attach");
+        eq(state.attract, false, "and it turns nothing on");
     });
 
     t("steering: signed, drawn from the centre line, readout says which way", function () {

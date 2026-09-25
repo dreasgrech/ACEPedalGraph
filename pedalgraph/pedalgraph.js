@@ -274,6 +274,17 @@ const PedalGraph = (function () {
      */
     /** Seconds for one scripted lap of the demo. */
     const ATTRACT_CYCLE_S = 14;
+    /**
+     * Attract mode lasts a game session at most: the option is kept like every other, but it is
+     * only honoured at attach while this flag, in the library's local store (which the game
+     * clears when it closes), says the demo was switched on in this session. Left on at a
+     * restart, it would put scripted inputs on a real HUD; through Escape/resume it stays on, so
+     * a recording can go on across a pause. Not "acepedalgraph.attract": that is the key the
+     * option lived under before it was a setting (me.remember), cleared at attach.
+     */
+    const ATTRACT_SESSION_KEY = "acepedalgraph.attractsession";
+    /** The me.remember suffix attract mode was kept under before it was a setting. */
+    const ATTRACT_LEGACY_SUFFIX = "attract";
     /** The live attached state, so the demo can be toggled from the dev console. */
     let current = null;
 
@@ -386,9 +397,8 @@ const PedalGraph = (function () {
             key: SETTING.attract,
             type: "toggle",
             label: "Attract mode",
-            /** Seeded from the key it lived under before it was a setting, so a widget left in attract mode does not reset. */
-            value: Boolean(me.recall("attract", false)),
-            hint: "scripted inputs, for recording without driving"
+            value: false,
+            hint: "scripted inputs, for recording without driving; lasts this game session"
         }
     ]));
 
@@ -711,9 +721,16 @@ const PedalGraph = (function () {
         log("history window " + windowSeconds(choice) + " s, " + (N / windowSeconds(choice)).toFixed(0) + " Hz");
     };
 
-    /** Turn the self-running demo on or off, and remember it. */
+    /** Turn the self-running demo on or off, for this game session (see ATTRACT_SESSION_KEY). */
     const setAttract = function (state, on) {
         state.attract = Boolean(on);
+
+        if (state.attract) {
+            ACEUIAppLoader.persist.writeLocal(ATTRACT_SESSION_KEY, true);
+        } else {
+            ACEUIAppLoader.persist.removeLocal(ATTRACT_SESSION_KEY);
+        }
+
         settings.set(me.name, SETTING.attract, state.attract);
         log("attract " + (state.attract ? "on" : "off"));
 
@@ -977,7 +994,16 @@ const PedalGraph = (function () {
     const attach = function (root) {
         const state = create(root);
 
-        state.attract = Boolean(options[SETTING.attract]);
+        // the key the demo lived under before it was a setting kept it on across restarts: gone for good
+        if (me.recall(ATTRACT_LEGACY_SUFFIX, null) !== null) { me.forget(ATTRACT_LEGACY_SUFFIX); }
+
+        // the demo carries across Escape/resume, never across a restart (see ATTRACT_SESSION_KEY)
+        state.attract = Boolean(options[SETTING.attract]) && ACEUIAppLoader.persist.readLocal(ATTRACT_SESSION_KEY) === true;
+
+        if (Boolean(options[SETTING.attract]) && !state.attract) {
+            settings.set(me.name, SETTING.attract, false);
+            log("attract mode was left on from an earlier game session: switched off, so the graph shows the real inputs");
+        }
         applyView(state);
         applyOrder(state);
 

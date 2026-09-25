@@ -88,7 +88,7 @@ In the car, move your mouse to the right edge of the screen. The graph is listed
 - Drag to choose which input paints over which; the top of the list is in front. Default, top first: brake, clutch, steering, handbrake, throttle.
 
 **Demo**
-- *Attract mode*, **off**: scripted inputs, for recording without driving.
+- *Attract mode*, **off**: scripted inputs, for recording without driving. It lasts one game session: it stays on through Escape/resume and is off again after a restart.
 
 **Reset to defaults** puts every value back.
 
@@ -131,5 +131,5 @@ Delete the folder `mods\uiresources\ACEUIAppLoader\pedalgraph` and the file `Vid
 ---
 
 <div align="center">
-<sub>Pedal Graph 0.8.5 · needs ACE UI App Loader 0.23.0 or newer</sub>
+<sub>Pedal Graph 0.8.6 · needs ACE UI App Loader 0.23.0 or newer</sub>
 </div>

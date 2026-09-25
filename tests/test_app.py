@@ -14,7 +14,7 @@ JS = os.path.join(ROOT, "pedalgraph", "pedalgraph.js")
 
 class Tests(AppTests):
     ROOT = ROOT
-    MIN_CASES = 31
+    MIN_CASES = 32
     HOT_PATH = ("const commitSample", "// ---- lifecycle")
 
 
