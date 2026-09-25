@@ -66,7 +66,7 @@ In the car, move your mouse to the right edge of the screen. The graph is listed
 <td width="300" valign="top"><img width="300" alt="The Pedal Graph options window" src="https://github.com/user-attachments/assets/7761c2d8-4e9e-4ae9-aa3a-b8d716583d90" /></td>
 <td valign="top">
 
-**OPTIONS** in the app drawer opens the graph's settings. Everything you change is kept, through the HUD reload and a restart. Click a section header to fold it. Defaults in bold.
+**OPTIONS** in the app drawer opens the graph's settings; with ACE UI App Loader 0.27.0 or newer, so does a right-click on the graph. Everything you change is kept, through the HUD reload and a restart. Click a section header to fold it. Defaults in bold.
 
 **Layout**
 - *Panel scale*: 0.6 to 2.0 in steps of 0.1, default **1.0**.
